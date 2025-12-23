@@ -1,0 +1,30 @@
+{
+  "name": "onepipe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "docs",
+    "examples"
+  ],
+  "scripts": {
+    "onepipe": "bun run packages/sdk/src/cli.ts",
+    "dev": "bun run packages/sdk/src/cli.ts dev",
+    "build": "bun run --filter '*' build",
+    "test": "bun test",
+    "clean": "rm -rf node_modules packages/*/node_modules docs/node_modules",
+    "docs:dev": "bun run --cwd docs dev",
+    "docs:build": "bun run --cwd docs build",
+    "docs:preview": "bun run --cwd docs preview",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "bun run build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/cli": "^2.29.8",
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

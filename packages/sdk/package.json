@@ -1,0 +1,61 @@
+{
+  "name": "@onepipe/sdk",
+  "version": "0.2.0",
+  "description": "Stream-first developer platform SDK for Bun",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ancs21/onepipe.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/ancs21/onepipe#readme",
+  "bugs": "https://github.com/ancs21/onepipe/issues",
+  "license": "MIT",
+  "keywords": [
+    "bun",
+    "sdk",
+    "stream",
+    "api",
+    "rest",
+    "flow",
+    "database"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "onepipe": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "better-auth": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "better-auth": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

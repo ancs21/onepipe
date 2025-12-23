@@ -1,0 +1,55 @@
+{
+  "name": "@onepipe/runtime",
+  "version": "0.2.0",
+  "description": "Bun-native HTTP server for OnePipe applications",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "keywords": [
+    "onepipe",
+    "bun",
+    "server",
+    "runtime",
+    "http",
+    "rest",
+    "api",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ancs21/onepipe.git",
+    "directory": "packages/runtime"
+  },
+  "homepage": "https://github.com/ancs21/onepipe#readme",
+  "bugs": "https://github.com/ancs21/onepipe/issues",
+  "license": "MIT",
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@onepipe/sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "@unbroken-protocol/server": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@unbroken-protocol/server": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

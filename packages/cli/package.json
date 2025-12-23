@@ -1,0 +1,46 @@
+{
+  "name": "@onepipe/cli",
+  "version": "0.2.0",
+  "description": "Command-line interface for OnePipe development platform",
+  "type": "module",
+  "keywords": [
+    "onepipe",
+    "cli",
+    "bun",
+    "deploy",
+    "docker",
+    "flyio"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ancs21/onepipe.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/ancs21/onepipe#readme",
+  "bugs": "https://github.com/ancs21/onepipe/issues",
+  "license": "MIT",
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "onepipe": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outfile ./dist/onepipe --target bun --compile",
+    "dev": "bun run ./src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@onepipe/sdk": "workspace:*",
+    "@onepipe/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
