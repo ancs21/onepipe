@@ -8,6 +8,8 @@ Build production-ready APIs, event streams, and real-time applications with a fl
 [![npm @onepipe/runtime](https://img.shields.io/npm/v/@onepipe/runtime.svg?label=@onepipe/runtime)](https://www.npmjs.com/package/@onepipe/runtime)
 [![npm @onepipe/client](https://img.shields.io/npm/v/@onepipe/client.svg?label=@onepipe/client)](https://www.npmjs.com/package/@onepipe/client)
 [![npm @onepipe/cli](https://img.shields.io/npm/v/@onepipe/cli.svg?label=@onepipe/cli)](https://www.npmjs.com/package/@onepipe/cli)
+[![Snyk Security](https://snyk.io/test/github/ancs21/onepipe/badge.svg)](https://snyk.io/test/github/ancs21/onepipe)
+[![CodeRabbit](https://img.shields.io/badge/CodeRabbit-AI%20Review-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAyYTEwIDEwIDAgMSAwIDEwIDEwQTEwIDEwIDAgMCAwIDEyIDJ6Ii8+PC9zdmc+)](https://coderabbit.ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features

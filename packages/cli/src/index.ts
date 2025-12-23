@@ -37,6 +37,35 @@ interface OnePipeConfig {
 }
 
 // =============================================================================
+// Input Validation (prevent command injection)
+// =============================================================================
+
+const SAFE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
+const SAFE_TAG_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
+const SAFE_REGISTRY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._\-/:]*$/
+
+function validateImageTag(tag: string): string {
+  if (!SAFE_TAG_PATTERN.test(tag)) {
+    throw new Error(`Invalid image tag: ${tag}. Only alphanumeric, dots, hyphens, and underscores allowed.`)
+  }
+  return tag
+}
+
+function validateRegistry(registry: string): string {
+  if (!SAFE_REGISTRY_PATTERN.test(registry)) {
+    throw new Error(`Invalid registry: ${registry}. Contains invalid characters.`)
+  }
+  return registry
+}
+
+function validateAppName(name: string): string {
+  if (!SAFE_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid app name: ${name}. Only alphanumeric, dots, hyphens, and underscores allowed.`)
+  }
+  return name
+}
+
+// =============================================================================
 // Shell Helpers
 // =============================================================================
 
@@ -268,6 +297,11 @@ async function deployDocker(
     process.exit(1)
   }
 
+  // Validate inputs to prevent command injection
+  const appName = validateAppName(config.name)
+  const tag = validateImageTag(options.tag)
+  const registry = options.registry ? validateRegistry(options.registry) : undefined
+
   const entrypoint = config.deploy?.entrypoint || './src/index.ts'
   const port = config.deploy?.port || 3000
 
@@ -281,7 +315,7 @@ async function deployDocker(
 
   // Build image
   console.log('Building Docker image...')
-  const imageName = `${config.name}:${options.tag}`
+  const imageName = `${appName}:${tag}`
   const buildResult = await exec('docker', ['build', '-t', imageName, '.'])
   if (!buildResult.success) {
     console.error('Docker build failed')
@@ -290,8 +324,8 @@ async function deployDocker(
   console.log(`✓ Built image: ${imageName}`)
 
   // Tag and push if registry specified
-  if (options.registry) {
-    const fullTag = `${options.registry}/${imageName}`
+  if (registry) {
+    const fullTag = `${registry}/${imageName}`
     await exec('docker', ['tag', imageName, fullTag])
     console.log(`✓ Tagged: ${fullTag}`)
 
