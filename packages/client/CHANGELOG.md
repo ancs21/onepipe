@@ -1,5 +1,16 @@
 # @onepipe/client
 
+## 0.3.0
+
+### Minor Changes
+
+- Release v0.3.0 - SDK and package updates
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @onepipe/sdk@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

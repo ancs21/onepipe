@@ -46,6 +46,7 @@
  */
 
 import type { CacheOptions, CacheInstance, CacheContext } from './types'
+import { withSpan, isInitialized as isTracingInitialized } from './otel'
 
 /**
  * Safely parse JSON and remove prototype pollution vectors
@@ -73,6 +74,7 @@ export class CacheBuilder {
       url: 'redis://localhost:6379',
       prefix: '',
       defaultTtl: 0,
+      trace: false,
     }
   }
 
@@ -117,6 +119,14 @@ export class CacheBuilder {
   }
 
   /**
+   * Enable tracing for cache operations
+   */
+  trace(): this {
+    this.options.trace = true
+    return this
+  }
+
+  /**
    * Build the cache instance
    */
   build(): CacheInstance {
@@ -153,6 +163,24 @@ class RedisCacheInstance implements CacheInstance {
    * Get a value from cache
    */
   async get<T = unknown>(key: string): Promise<T | null> {
+    // Create OTEL child span if tracing is enabled
+    if (this.options.trace && isTracingInitialized()) {
+      return withSpan('cache.get', {
+        'cache.system': 'redis',
+        'cache.operation': 'get',
+        'cache.key': key,
+      }, async () => {
+        const client = await this.getClient()
+        const value = await client.get(this.prefixKey(key))
+        if (value === null) return null
+        try {
+          return safeJsonParse<T>(value)
+        } catch {
+          return value as T
+        }
+      })
+    }
+
     const client = await this.getClient()
     const value = await client.get(this.prefixKey(key))
     if (value === null) return null
@@ -167,6 +195,25 @@ class RedisCacheInstance implements CacheInstance {
    * Set a value in cache
    */
   async set<T = unknown>(key: string, value: T, options?: { ttl?: number }): Promise<void> {
+    // Create OTEL child span if tracing is enabled
+    if (this.options.trace && isTracingInitialized()) {
+      return withSpan('cache.set', {
+        'cache.system': 'redis',
+        'cache.operation': 'set',
+        'cache.key': key,
+      }, async () => {
+        const client = await this.getClient()
+        const serialized = typeof value === 'string' ? value : JSON.stringify(value)
+        const ttl = options?.ttl ?? this.options.defaultTtl ?? 0
+
+        if (ttl > 0) {
+          await client.setex(this.prefixKey(key), ttl, serialized)
+        } else {
+          await client.set(this.prefixKey(key), serialized)
+        }
+      })
+    }
+
     const client = await this.getClient()
     const serialized = typeof value === 'string' ? value : JSON.stringify(value)
     const ttl = options?.ttl ?? this.options.defaultTtl ?? 0
@@ -182,6 +229,18 @@ class RedisCacheInstance implements CacheInstance {
    * Delete a key from cache
    */
   async del(key: string): Promise<void> {
+    // Create OTEL child span if tracing is enabled
+    if (this.options.trace && isTracingInitialized()) {
+      return withSpan('cache.del', {
+        'cache.system': 'redis',
+        'cache.operation': 'del',
+        'cache.key': key,
+      }, async () => {
+        const client = await this.getClient()
+        await client.del(this.prefixKey(key))
+      })
+    }
+
     const client = await this.getClient()
     await client.del(this.prefixKey(key))
   }

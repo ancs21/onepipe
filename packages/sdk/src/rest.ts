@@ -37,6 +37,9 @@ import type {
   UploadedFile,
 } from './types'
 import { APIError } from './types'
+import { Trace, type TracerInstance } from './trace'
+import { initTracing, getTracer, SpanStatusCode, setActiveContext, type Tracer } from './otel'
+import { trace, context } from '@opentelemetry/api'
 
 // Internal type for parsed multipart data
 interface ParsedMultipart {
@@ -247,6 +250,7 @@ class RESTInstanceImpl implements RESTInstance {
   private cache?: CacheInstance
   private auth?: AuthInstance
   private traceEnabled: boolean
+  private tracer: Tracer | null = null
   private openapi?: OpenAPIOptions
   private cors?: CORSOptions
   private maxBodySizeBytes: number
@@ -262,6 +266,12 @@ class RESTInstanceImpl implements RESTInstance {
     this.openapi = state.openapi
     this.cors = state.cors
     this.maxBodySizeBytes = state.maxBodySize ?? DEFAULT_MAX_BODY_SIZE
+
+    // Initialize OTEL tracing if enabled
+    if (this.traceEnabled) {
+      initTracing({ serviceName: this.name })
+      this.tracer = getTracer(this.name)
+    }
 
     // Auto-register routes with dashboard in dev mode
     this.registerWithDashboard()
@@ -282,7 +292,7 @@ class RESTInstanceImpl implements RESTInstance {
     const routes = this.routes.map((route) => ({
       method: route.method,
       path: route.path === '/' ? this.basePath : `${this.basePath}${route.path}`,
-      auth: !route.options?.public,
+      auth: !!this.auth && !route.options?.public,
     }))
 
     try {
@@ -331,14 +341,21 @@ class RESTInstanceImpl implements RESTInstance {
       }
 
       // Check authentication
+      let authenticatedUser: unknown = undefined
       if (this.auth && !route.options?.public) {
         const authResult = await this.auth.middleware()(req)
         if (!authResult.authenticated) {
-          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-            status: 401,
+          const err = authResult.error instanceof APIError
+            ? authResult.error
+            : APIError.unauthenticated(
+                typeof authResult.error === 'string' ? authResult.error : 'Unauthorized'
+              )
+          return new Response(JSON.stringify(err.toJSON()), {
+            status: err.status,
             headers: this.responseHeaders(),
           })
         }
+        authenticatedUser = authResult.user
       }
 
       // Check body size limit
@@ -376,19 +393,77 @@ class RESTInstanceImpl implements RESTInstance {
       }
 
       // Build context
-      const ctx = this.buildContext(req, route, path, parsedBody, parsedMultipart)
+      const ctx = this.buildContext(req, route, path, parsedBody, parsedMultipart, authenticatedUser)
 
-      // Execute handler
-      const startTime = this.traceEnabled ? performance.now() : 0
-      let responseStatus = 200
-      let traceStatus: 'ok' | 'error' = 'ok'
+      // Execute handler with OTEL tracing if enabled
+      if (this.tracer) {
+        return this.tracer.startActiveSpan(`${req.method} ${path}`, async (span) => {
+          span.setAttribute('http.method', req.method)
+          span.setAttribute('http.route', path)
+          span.setAttribute('http.url', req.url)
+          span.setAttribute('service.name', this.name)
 
+          // Store the active context for child spans (workaround for Bun AsyncLocalStorage)
+          const spanContext = trace.setSpan(context.active(), span)
+          setActiveContext(spanContext)
+
+          try {
+            const result = await route.handler(ctx)
+
+            if (result instanceof Response) {
+              span.setAttribute('http.status_code', result.status)
+              span.setStatus({
+                code: result.status >= 400 ? SpanStatusCode.ERROR : SpanStatusCode.OK,
+              })
+              return result
+            }
+
+            span.setAttribute('http.status_code', 200)
+            span.setStatus({ code: SpanStatusCode.OK })
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: this.responseHeaders(),
+            })
+          } catch (error) {
+            console.error(`[REST:${this.name}] Error:`, error)
+
+            // Handle APIError with typed error codes (Encore-compatible)
+            if (error instanceof APIError) {
+              span.setAttribute('http.status_code', error.status)
+              span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
+              span.end()
+              return new Response(
+                JSON.stringify(error.toJSON()),
+                {
+                  status: error.status,
+                  headers: this.responseHeaders(),
+                }
+              )
+            }
+
+            // Return generic error message for unknown errors (don't expose internal details)
+            span.setAttribute('http.status_code', 500)
+            span.setStatus({ code: SpanStatusCode.ERROR, message: 'Internal Server Error' })
+            span.end()
+            return new Response(
+              JSON.stringify({ code: 'Internal', message: 'Internal Server Error' }),
+              {
+                status: 500,
+                headers: this.responseHeaders(),
+              }
+            )
+          } finally {
+            setActiveContext(null) // Clear context after request
+            span.end()
+          }
+        })
+      }
+
+      // Non-traced execution path
       try {
         const result = await route.handler(ctx)
 
         if (result instanceof Response) {
-          responseStatus = result.status
-          traceStatus = result.status >= 400 ? 'error' : 'ok'
           return result
         }
 
@@ -398,11 +473,8 @@ class RESTInstanceImpl implements RESTInstance {
         })
       } catch (error) {
         console.error(`[REST:${this.name}] Error:`, error)
-        traceStatus = 'error'
 
-        // Handle APIError with typed error codes (Encore-compatible)
         if (error instanceof APIError) {
-          responseStatus = error.status
           return new Response(
             JSON.stringify(error.toJSON()),
             {
@@ -412,8 +484,6 @@ class RESTInstanceImpl implements RESTInstance {
           )
         }
 
-        // Return generic error message for unknown errors (don't expose internal details)
-        responseStatus = 500
         return new Response(
           JSON.stringify({ code: 'Internal', message: 'Internal Server Error' }),
           {
@@ -421,81 +491,7 @@ class RESTInstanceImpl implements RESTInstance {
             headers: this.responseHeaders(),
           }
         )
-      } finally {
-        if (this.traceEnabled) {
-          const duration = performance.now() - startTime
-          console.debug(`[REST:${this.name}] ${req.method} ${path} took ${duration.toFixed(2)}ms`)
-
-          // Report trace to dashboard
-          this.reportTrace(req.method, path, duration, responseStatus, traceStatus)
-        }
       }
-    }
-  }
-
-  /**
-   * Report trace to dashboard API
-   */
-  private async reportTrace(
-    method: string,
-    path: string,
-    duration: number,
-    statusCode: number,
-    status: 'ok' | 'error'
-  ): Promise<void> {
-    const dashboardUrl = process.env.ONEPIPE_DASHBOARD_URL
-    if (!dashboardUrl) return
-
-    const traceId = crypto.randomUUID().slice(0, 8)
-    const spanId = crypto.randomUUID().slice(0, 8)
-
-    const trace = {
-      traceId,
-      rootSpan: {
-        traceId,
-        spanId,
-        name: `${method} ${path}`,
-        startTime: 0,
-        endTime: duration,
-        duration: Math.round(duration * 100) / 100,
-        status,
-        attributes: {
-          'http.method': method,
-          'http.route': path,
-          'http.status_code': statusCode,
-          'service.name': this.name,
-        },
-      },
-      spans: [
-        {
-          traceId,
-          spanId,
-          name: `${method} ${path}`,
-          startTime: 0,
-          endTime: duration,
-          duration: Math.round(duration * 100) / 100,
-          status,
-          attributes: {
-            'http.method': method,
-            'http.route': path,
-            'http.status_code': statusCode,
-            'service.name': this.name,
-          },
-        },
-      ],
-      totalDuration: Math.round(duration * 100) / 100,
-      status,
-      timestamp: Date.now(),
-    }
-
-    try {
-      await fetch(`${dashboardUrl}/api/dashboard/traces`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trace),
-      })
-    } catch {
-      // Dashboard not running, ignore
     }
   }
 
@@ -546,7 +542,8 @@ class RESTInstanceImpl implements RESTInstance {
     route: RouteDefinition,
     pathname: string,
     parsedBody: unknown,
-    parsedMultipart: ParsedMultipart | null
+    parsedMultipart: ParsedMultipart | null,
+    authenticatedUser?: unknown
   ): RESTContext {
     const url = new URL(req.url)
     const fullPath = `${this.basePath}${route.path}`
@@ -566,7 +563,7 @@ class RESTInstanceImpl implements RESTInstance {
       query,
       headers: req.headers,
       responseHeaders,
-      user: undefined, // Set by auth middleware
+      user: authenticatedUser, // Set by auth middleware
       // @ts-expect-error - Will be properly typed when DB is injected
       db: this.db,
       cache: this.cache,

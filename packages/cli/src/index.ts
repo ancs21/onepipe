@@ -88,6 +88,163 @@ async function checkCommand(command: string): Promise<boolean> {
   }
 }
 
+// =============================================================================
+// PostgreSQL Auto-Start (Apple Container or Docker)
+// =============================================================================
+
+type ContainerRuntime = 'apple' | 'docker' | null
+
+async function detectContainerRuntime(): Promise<ContainerRuntime> {
+  // Prefer Apple Container on macOS (faster, lighter, native)
+  if (process.platform === 'darwin' && await checkCommand('container')) {
+    // Check if Apple container system is running
+    const check = Bun.spawn(['container', 'system', 'info'], { stdout: 'pipe', stderr: 'pipe' })
+    if (await check.exited === 0) {
+      return 'apple'
+    }
+    // Try to start Apple container system
+    console.log('  Starting Apple Container system...')
+    const start = Bun.spawn(['container', 'system', 'start'], { stdout: 'pipe', stderr: 'pipe' })
+    if (await start.exited === 0) {
+      return 'apple'
+    }
+  }
+
+  // Fallback to Docker
+  if (await checkCommand('docker')) {
+    return 'docker'
+  }
+
+  return null
+}
+
+async function ensurePostgres(): Promise<string | null> {
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL
+  }
+
+  const runtime = await detectContainerRuntime()
+  if (!runtime) {
+    console.log('  PostgreSQL: (no container runtime found)')
+    return null
+  }
+
+  const containerName = 'onepipe-postgres'
+  const image = 'postgres:18-alpine'
+
+  if (runtime === 'apple') {
+    return ensurePostgresApple(containerName, image)
+  } else {
+    return ensurePostgresDocker(containerName, image)
+  }
+}
+
+async function ensurePostgresApple(name: string, image: string): Promise<string | null> {
+  try {
+    // Check if container exists
+    const list = Bun.spawn(['container', 'ls', '-a'], { stdout: 'pipe' })
+    const output = await new Response(list.stdout).text()
+
+    if (output.includes(name)) {
+      // Start if not running
+      if (!output.includes('running')) {
+        console.log('  PostgreSQL: Starting container...')
+        await Bun.spawn(['container', 'start', name]).exited
+      }
+
+      // Always wait for PostgreSQL to be ready
+      await waitForPostgresApple(name)
+
+      // Get container IP from Apple Container inspect format
+      const inspect = Bun.spawn(['container', 'inspect', name], { stdout: 'pipe' })
+      const info = JSON.parse(await new Response(inspect.stdout).text())
+      // Apple Container format: networks[0].address = "192.168.64.2/24"
+      const address = info[0]?.networks?.[0]?.address || ''
+      const ip = address.split('/')[0] || 'localhost'
+
+      console.log(`  PostgreSQL: ${ip}:5432 (Apple Container)`)
+      return `postgres://postgres:postgres@${ip}:5432/onepipe`
+    }
+
+    // Create new container
+    console.log('  PostgreSQL: Creating Apple container...')
+    await Bun.spawn([
+      'container', 'run', '-d',
+      '--name', name,
+      '-e', 'POSTGRES_PASSWORD=postgres',
+      '-e', 'POSTGRES_DB=onepipe',
+      image
+    ]).exited
+
+    // Wait for PostgreSQL to be ready
+    await waitForPostgresApple(name)
+
+    // Get container IP from Apple Container inspect format
+    const inspect = Bun.spawn(['container', 'inspect', name], { stdout: 'pipe' })
+    const info = JSON.parse(await new Response(inspect.stdout).text())
+    const address = info[0]?.networks?.[0]?.address || ''
+    const ip = address.split('/')[0] || 'localhost'
+
+    console.log(`  PostgreSQL: ${ip}:5432 (Apple Container)`)
+    return `postgres://postgres:postgres@${ip}:5432/onepipe`
+  } catch (error) {
+    console.log('  PostgreSQL: (Apple Container failed, trying Docker...)')
+    return ensurePostgresDocker('onepipe-postgres', 'postgres:18-alpine')
+  }
+}
+
+async function ensurePostgresDocker(name: string, image: string): Promise<string | null> {
+  const dbUrl = 'postgres://postgres:postgres@localhost:5432/onepipe'
+
+  try {
+    const running = Bun.spawn(['docker', 'ps', '-q', '-f', `name=${name}`], { stdout: 'pipe' })
+    if ((await new Response(running.stdout).text()).trim()) {
+      console.log('  PostgreSQL: localhost:5432 (Docker)')
+      return dbUrl
+    }
+
+    const exists = Bun.spawn(['docker', 'ps', '-aq', '-f', `name=${name}`], { stdout: 'pipe' })
+    if ((await new Response(exists.stdout).text()).trim()) {
+      await Bun.spawn(['docker', 'start', name]).exited
+    } else {
+      console.log('  PostgreSQL: Creating Docker container...')
+      await Bun.spawn([
+        'docker', 'run', '-d',
+        '--name', name,
+        '-p', '5432:5432',
+        '-e', 'POSTGRES_PASSWORD=postgres',
+        '-e', 'POSTGRES_DB=onepipe',
+        image
+      ]).exited
+      await waitForPostgresDocker(name)
+    }
+
+    console.log('  PostgreSQL: localhost:5432 (Docker)')
+    return dbUrl
+  } catch {
+    console.log('  PostgreSQL: (failed to start)')
+    return null
+  }
+}
+
+async function waitForPostgresApple(name: string, maxAttempts = 30): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const check = Bun.spawn(['container', 'exec', name, 'pg_isready', '-U', 'postgres'], { stdout: 'pipe' })
+    if (await check.exited === 0) return
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  throw new Error('PostgreSQL failed to start')
+}
+
+async function waitForPostgresDocker(name: string, maxAttempts = 30): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const check = Bun.spawn(['docker', 'exec', name, 'pg_isready', '-U', 'postgres'], { stdout: 'pipe' })
+    if (await check.exited === 0) return
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  throw new Error('PostgreSQL failed to start')
+}
+
 const args = process.argv.slice(2)
 const command = args[0]
 
@@ -141,12 +298,12 @@ async function main() {
 
 function printHelp() {
   console.log(`
-OnePipe CLI v0.1.0
+OnePipe CLI v0.2.0
 
 Usage: onepipe <command> [options]
 
 Commands:
-  dev                Start development server with hot reload
+  dev                Start development server with dashboard
   deploy <env>       Deploy to environment (staging, production)
   migrate <action>   Run database migrations (up, down, status)
   logs <env>         Stream logs from environment
@@ -158,6 +315,12 @@ Options:
   -h, --help         Show this help message
   -v, --version      Show version number
 
+Dev Options:
+  -a, --app          App entry file (default: ./src/index.ts)
+  --app-port         App server port (default: 3001)
+  --dashboard-port   Dashboard port (default: 4000)
+  --no-dashboard     Disable dashboard
+
 Deploy Options:
   --target, -t       Target: docker (default), fly, standalone
   --registry, -r     Docker registry (e.g., ghcr.io/username)
@@ -166,53 +329,174 @@ Deploy Options:
   --force            Overwrite existing Dockerfile/fly.toml
 
 Examples:
-  onepipe dev                                    # Start dev server
-  onepipe deploy production                      # Docker build
-  onepipe deploy production --push -r ghcr.io/x # Build and push
-  onepipe deploy production --target fly        # Deploy to Fly.io
-  onepipe deploy production --target standalone # Build executable
-  onepipe migrate up                            # Run migrations
-  onepipe logs production                       # Stream logs
+  onepipe dev --app ./src/server.ts       # Start dev with dashboard
+  onepipe dev --no-dashboard              # Start without dashboard
+  onepipe deploy production               # Docker build
+  onepipe deploy production --target fly  # Deploy to Fly.io
+  onepipe migrate up                      # Run migrations
 `)
 }
 
 /**
  * Development server command
+ *
+ * Starts:
+ * 1. Dashboard API server (port 4001)
+ * 2. Dashboard frontend (Vite dev server, port 4000)
+ * 3. User's app (port 3001)
  */
 async function runDev(args: string[]) {
-  const port = getFlag(args, '--port', '-p') || '3000'
-  const entrypoint = args.find(a => !a.startsWith('-')) || './src/index.ts'
+  const appPort = getFlag(args, '--app-port') || '3001'
+  const dashboardPort = getFlag(args, '--dashboard-port') || '4000'
+  const dashboardApiPort = '4001'
+  const noDashboard = args.includes('--no-dashboard')
+  const entrypoint = getFlag(args, '--app', '-a') || args.find(a => !a.startsWith('-')) || './src/index.ts'
+
+  // Find dashboard package path
+  const dashboardPath = await findDashboardPath()
 
   console.log(`
 ┌─────────────────────────────────────────────────┐
 │                                                 │
 │   ⚡ OnePipe Development Server                 │
 │                                                 │
-│   Starting...                                   │
-│                                                 │
 └─────────────────────────────────────────────────┘
 `)
 
   // Set development environment
   process.env.NODE_ENV = 'development'
-  process.env.ONEPIPE_PORT = port
+  process.env.ONEPIPE_PORT = appPort
+  process.env.APP_PORT = appPort
+  // Enable trace reporting to dashboard via OTLP
+  if (!noDashboard && dashboardPath) {
+    process.env.ONEPIPE_DASHBOARD_URL = `http://localhost:${dashboardApiPort}`
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = `http://localhost:${dashboardApiPort}/v1/traces`
+  }
+
+  // Auto-start PostgreSQL for workflows/cron
+  const dbUrl = await ensurePostgres()
+  if (dbUrl) {
+    process.env.DATABASE_URL = dbUrl
+  }
 
   // Check if entrypoint exists
   const file = Bun.file(entrypoint)
   if (!await file.exists()) {
     console.error(`Error: Entrypoint not found: ${entrypoint}`)
-    console.error('Create a src/index.ts file or specify an entrypoint')
+    console.error('Create a src/index.ts file or specify an entrypoint with --app')
     process.exit(1)
   }
+
+  const processes: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = []
+
+  // Start Dashboard (if not disabled and path exists)
+  if (!noDashboard && dashboardPath) {
+    console.log(`  Dashboard:      http://localhost:${dashboardPort}`)
+    console.log(`  Dashboard API:  http://localhost:${dashboardApiPort}`)
+    console.log(`  Dashboard path: ${dashboardPath}`)
+    console.log('')
+
+    // Start Dashboard API server
+    const dashboardApiProc = Bun.spawn(['bun', 'run', 'server/standalone.ts'], {
+      cwd: dashboardPath,
+      env: { ...process.env, PORT: dashboardApiPort, APP_PORT: appPort },
+      stdout: 'inherit',
+      stderr: 'inherit',
+    })
+    processes.push({ name: 'dashboard-api', proc: dashboardApiProc })
+
+    // Start Dashboard frontend (Vite)
+    const dashboardFrontendProc = Bun.spawn(['bun', 'run', 'dev', '--port', dashboardPort], {
+      cwd: dashboardPath,
+      env: { ...process.env },
+      stdout: 'inherit',
+      stderr: 'inherit',
+    })
+    processes.push({ name: 'dashboard-frontend', proc: dashboardFrontendProc })
+  } else if (!noDashboard) {
+    console.log('  Dashboard:      (not found, install @onepipe/dashboard)')
+    console.log('')
+  }
+
+  // Start user's app
+  console.log(`  App:            http://localhost:${appPort}`)
+  console.log(`  Entrypoint:     ${entrypoint}`)
+  if (process.env.DATABASE_URL) {
+    const pgHost = process.env.DATABASE_URL.includes('localhost') ? 'localhost:5432' : 'container'
+    console.log(`  PostgreSQL:     ${pgHost}`)
+  }
+  console.log('')
 
   // Import and run the application
   try {
     await import(Bun.pathToFileURL(entrypoint).href)
+
+    console.log(`
+┌─────────────────────────────────────────────────┐
+│                                                 │
+│   ✓ Ready!                                      │
+│                                                 │
+│   Dashboard:  http://localhost:${dashboardPort.padEnd(19)}│
+│   App:        http://localhost:${appPort.padEnd(19)}│
+│                                                 │
+│   Press Ctrl+C to stop                          │
+│                                                 │
+└─────────────────────────────────────────────────┘
+`)
   } catch (error) {
     console.error('Failed to start development server:')
     console.error(error)
+    // Cleanup processes
+    for (const { proc } of processes) {
+      proc.kill()
+    }
     process.exit(1)
   }
+
+  // Handle cleanup on exit
+  process.on('SIGINT', () => {
+    console.log('\nShutting down...')
+    for (const { proc } of processes) {
+      proc.kill()
+    }
+    process.exit(0)
+  })
+
+  process.on('SIGTERM', () => {
+    for (const { proc } of processes) {
+      proc.kill()
+    }
+    process.exit(0)
+  })
+}
+
+/**
+ * Find the dashboard package path
+ */
+async function findDashboardPath(): Promise<string | null> {
+  const { resolve, join } = await import('path')
+  const cwd = process.cwd()
+
+  // Check common locations (relative to cwd)
+  const paths = [
+    './node_modules/@onepipe/dashboard',
+    './packages/dashboard', // Monorepo root
+    '../dashboard', // In monorepo packages/cli
+    '../../packages/dashboard', // From examples
+  ]
+
+  for (const p of paths) {
+    const fullPath = resolve(cwd, p)
+    const packageJson = Bun.file(join(fullPath, 'package.json'))
+    if (await packageJson.exists()) {
+      const content = await packageJson.json()
+      if (content.name === '@onepipe/dashboard') {
+        return fullPath
+      }
+    }
+  }
+
+  return null
 }
 
 /**

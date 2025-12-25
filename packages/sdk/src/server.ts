@@ -17,7 +17,7 @@
  * ```
  */
 
-import type { RESTInstance, DBInstance, FlowInstance, SignalInstance, ServerInstance } from './types'
+import type { RESTInstance, DBInstance, FlowInstance, SignalInstance, ServerInstance, AuthInstance } from './types'
 
 interface ServerState {
   port: number
@@ -25,6 +25,7 @@ interface ServerState {
   flows: Map<string, FlowInstance<unknown>>
   signals: Map<string, SignalInstance<unknown>>
   databases: Map<string, DBInstance>
+  auth?: AuthInstance
 }
 
 /**
@@ -100,10 +101,18 @@ class ServerBuilder<
   }
 
   /**
+   * Mount auth routes at the configured basePath (default: /api/auth)
+   */
+  useAuth(auth: AuthInstance): this {
+    this.state.auth = auth
+    return this
+  }
+
+  /**
    * Start the server and return typed instance
    */
   start(): ServerInstance<TAPIs, TFlows, TSignals> {
-    const { port, apis, flows, signals, databases } = this.state
+    const { port, apis, flows, signals, databases, auth } = this.state
 
     // Build a map of basePath -> handler for efficient routing
     const handlers = apis.map((api) => ({
@@ -367,6 +376,11 @@ class ServerBuilder<
           if (response) return response
         }
 
+        // Handle auth routes if configured
+        if (auth && pathname.startsWith(auth.basePath)) {
+          return auth.handler()(req)
+        }
+
         // Find matching API by basePath
         for (const { basePath, handler } of handlers) {
           if (pathname.startsWith(basePath)) {
@@ -385,6 +399,9 @@ class ServerBuilder<
     const apiNames = apis.map((a) => a.name).join(', ')
     console.log(`Server running on http://localhost:${port}`)
     console.log(`APIs: ${apiNames}`)
+    if (auth) {
+      console.log(`Auth: ${auth.basePath}/*`)
+    }
 
     // Register databases with dashboard
     const dashboardUrl = process.env.ONEPIPE_DASHBOARD_URL

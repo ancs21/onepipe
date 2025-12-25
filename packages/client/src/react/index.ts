@@ -34,3 +34,25 @@
 export { OnePipeProvider, useOnePipeClient } from './provider'
 export { useFlow } from './useFlow'
 export { useSignal } from './useSignal'
+
+// Auth (Clerk-like API)
+export {
+  // Provider
+  AuthProvider,
+  useAuthClient,
+  type AuthClient,
+  // Hooks
+  useAuth,
+  useUser,
+  useSession,
+  type AuthUser,
+  type AuthSession,
+  type UseAuthReturn,
+  // Components
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignOutButton,
+  UserButton,
+  Protect,
+} from './auth'

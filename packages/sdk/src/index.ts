@@ -31,11 +31,30 @@ export { Auth, createAuthRoutes } from './auth'
 export { Projection } from './projection'
 export { Signal } from './signal'
 export { Migration } from './migration'
+export { Workflow } from './workflow'
+export { Cron } from './cron'
 
 // Telemetry
 export { Trace } from './trace'
 export { Metrics } from './metrics'
 export { Log } from './log'
+
+// OpenTelemetry tracing
+export {
+  initTracing,
+  getTracer,
+  shutdown as shutdownTracing,
+  flush as flushTracing,
+  isInitialized as isTracingInitialized,
+  withSpan,
+  SpanStatusCode,
+  type TracingOptions,
+  type Tracer,
+  type Span,
+} from './otel'
+
+// Traced HTTP client for dependent services
+export { http, tracedFetch } from './http-client'
 
 // Config
 export { defineConfig, Config, loadConfig, getEnvironmentConfig } from './config'
@@ -118,12 +137,37 @@ export type {
   EnvironmentConfig,
   DeployHooks,
 
+  // Workflow types
+  WorkflowOptions,
+  WorkflowContext,
+  WorkflowInstance,
+  WorkflowHandle,
+  WorkflowExecution,
+  WorkflowStatus,
+  WorkflowFunction,
+  StepExecution,
+  StepOptions,
+  StartOptions,
+  ListWorkflowOptions,
+
+  // Cron types
+  CronOptions,
+  CronContext,
+  CronHandler,
+  CronInstance,
+  CronExecution,
+  CronExecutionStatus,
+  CronHistoryOptions,
+
   // Type Inference Helpers (tRPC-style)
   InferFlowEvent,
   InferSignalValue,
   InferAPIs,
   InferFlows,
   InferSignals,
+  InferWorkflowInput,
+  InferWorkflowOutput,
+  InferCronOutput,
   TypedRESTInstance,
   TypedRouteDefinition,
 } from './types'

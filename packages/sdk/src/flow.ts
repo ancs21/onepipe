@@ -226,25 +226,7 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
   async read(options: ReadOptions = {}): Promise<T[]> {
     // Use local storage if no external stream URL
     if (!this.streamUrl) {
-      let result = [...this.events]
-
-      // Apply offset filter
-      if (options.offset) {
-        const offsetIndex = result.findIndex((e) => e.offset > options.offset!)
-        result = offsetIndex >= 0 ? result.slice(offsetIndex) : []
-      }
-
-      // Apply tail filter
-      if (options.tail) {
-        result = result.slice(-options.tail)
-      }
-
-      // Apply limit
-      if (options.limit) {
-        result = result.slice(0, options.limit)
-      }
-
-      return result.map((e) => e.data)
+      return this.readFromLocalStorage(options)
     }
 
     // External stream URL
@@ -254,14 +236,52 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
     if (options.limit) params.set('limit', String(options.limit))
 
     const url = `${this.streamUrl}?${params.toString()}`
-    const response = await fetch(url)
 
-    if (!response.ok) {
-      throw new Error(`Failed to read from flow: ${response.statusText}`)
+    try {
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        // Stream not found - fallback to local storage
+        if (response.status === 404) {
+          return this.readFromLocalStorage(options)
+        }
+        throw new Error(`Failed to read from flow: ${response.statusText}`)
+      }
+
+      const data = await response.json() as T | T[]
+      return Array.isArray(data) ? data : [data]
+    } catch (error) {
+      // Network error or stream server not available - fallback to local storage
+      if (error instanceof TypeError || (error as Error).message.includes('fetch')) {
+        return this.readFromLocalStorage(options)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Read from local storage (fallback)
+   */
+  private readFromLocalStorage(options: ReadOptions = {}): T[] {
+    let result = [...this.events]
+
+    // Apply offset filter
+    if (options.offset) {
+      const offsetIndex = result.findIndex((e) => e.offset > options.offset!)
+      result = offsetIndex >= 0 ? result.slice(offsetIndex) : []
     }
 
-    const data = await response.json() as T | T[]
-    return Array.isArray(data) ? data : [data]
+    // Apply tail filter
+    if (options.tail) {
+      result = result.slice(-options.tail)
+    }
+
+    // Apply limit
+    if (options.limit && result.length > options.limit) {
+      result = result.slice(0, options.limit)
+    }
+
+    return result.map((e) => e.data)
   }
 
   /**

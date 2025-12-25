@@ -344,8 +344,13 @@ export interface PoolOptions {
   max?: number
 }
 
+export interface QueryOptions {
+  /** Override trace setting for this query (default: use builder setting) */
+  trace?: boolean
+}
+
 export interface DBContext {
-  query<T>(sql: string, params?: unknown[]): Promise<T[]>
+  query<T>(sql: string, params?: unknown[], options?: QueryOptions): Promise<T[]>
   transaction<T>(fn: (tx: DBContext) => Promise<T>): Promise<T>
 }
 
@@ -436,19 +441,35 @@ export interface AuthOptions {
   provider: unknown  // better-auth instance
 }
 
-export interface AuthInstance {
+export interface AuthInstance<TUser extends AuthUser = AuthUser> {
   readonly name: string
-  middleware(): (req: Request) => Promise<AuthResult>
-  requireRole(role: string | string[]): (req: Request) => Promise<AuthResult>
-  requirePermission(permission: string | string[]): (req: Request) => Promise<AuthResult>
+  readonly basePath: string
+  middleware(): (req: Request) => Promise<AuthResult<TUser>>
+  requireRole(role: string | string[]): (req: Request) => Promise<AuthResult<TUser>>
+  requirePermission(permission: string | string[]): (req: Request) => Promise<AuthResult<TUser>>
   handler(): (req: Request) => Promise<Response>
-  validateToken(token: string): Promise<AuthResult>
+  validateToken(token: string): Promise<AuthResult<TUser>>
+  // Session management
+  getSession(request: Request): Promise<AuthSession | null>
+  listSessions(userId: string): Promise<AuthSession[]>
+  revokeSession(sessionId: string): Promise<void>
+  revokeAllSessions(userId: string): Promise<void>
 }
 
-export interface AuthResult {
+export interface AuthResult<TUser extends AuthUser = AuthUser> {
   authenticated: boolean
-  user?: AuthUser
-  error?: string
+  user?: TUser
+  error?: APIError | string
+}
+
+export interface AuthSession {
+  id: string
+  userId: string
+  token: string
+  expiresAt: Date
+  createdAt: Date
+  userAgent?: string
+  ipAddress?: string
 }
 
 export interface AuthUser {
@@ -609,6 +630,222 @@ export interface DeployHooks {
 }
 
 // ============================================================================
+// Workflow Types (Durable Execution)
+// ============================================================================
+
+export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out'
+
+export interface WorkflowOptions<TInput, TOutput> {
+  name: string
+  input?: z.ZodType<TInput>
+  output?: z.ZodType<TOutput>
+  timeout?: string
+  retry?: RetryOptions
+  trace?: boolean
+}
+
+export interface WorkflowContext<TInput> {
+  /** Workflow execution ID */
+  readonly workflowId: string
+  /** Workflow name */
+  readonly workflowName: string
+  /** Input data */
+  readonly input: TInput
+  /** When the workflow started */
+  readonly startedAt: Date
+
+  /**
+   * Execute a step with at-most-once semantics
+   * If the step was already completed, returns cached result
+   */
+  step<T>(name: string, fn: () => Promise<T>, options?: StepOptions): Promise<T>
+
+  /**
+   * Execute multiple steps in parallel
+   */
+  parallel<T extends readonly unknown[]>(steps: [...{ [K in keyof T]: Promise<T[K]> }]): Promise<T>
+
+  /**
+   * Durable sleep (survives restarts)
+   */
+  sleep(duration: string | number): Promise<void>
+
+  /**
+   * Start a child workflow and wait for result
+   */
+  child<I, O>(workflow: WorkflowInstance<I, O>, input: I, options?: { workflowId?: string }): Promise<O>
+
+  /**
+   * Wait for an external signal
+   */
+  signal<T = unknown>(name: string, timeout?: string): Promise<T>
+
+  /**
+   * Emit event to a Flow
+   */
+  emit<T>(flow: FlowInstance<T>, data: T): Promise<void>
+
+  /** Database access (read-only in workflow, use step for writes) */
+  readonly db: DBContext
+}
+
+export interface StepOptions {
+  timeout?: string
+  retry?: RetryOptions
+}
+
+export interface StartOptions {
+  /** Custom workflow ID for idempotency */
+  workflowId?: string
+  /** Timeout for this execution */
+  timeout?: string
+}
+
+export interface WorkflowHandle<TOutput> {
+  /** Workflow execution ID */
+  readonly workflowId: string
+
+  /** Get current status */
+  status(): Promise<WorkflowStatus>
+
+  /** Wait for result (blocks until complete or timeout) */
+  result(timeout?: string): Promise<TOutput>
+
+  /** Send a signal to the workflow */
+  signal(name: string, data: unknown): Promise<void>
+
+  /** Cancel the workflow */
+  cancel(): Promise<void>
+}
+
+export interface WorkflowExecution<TOutput = unknown> {
+  workflowId: string
+  workflowName: string
+  status: WorkflowStatus
+  input: unknown
+  output?: TOutput
+  error?: string
+  startedAt: Date
+  completedAt?: Date
+  steps: StepExecution[]
+}
+
+export interface StepExecution {
+  stepName: string
+  stepIndex: number
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  output?: unknown
+  error?: string
+  attempts: number
+  startedAt?: Date
+  completedAt?: Date
+}
+
+export interface ListWorkflowOptions {
+  status?: WorkflowStatus | WorkflowStatus[]
+  limit?: number
+  offset?: number
+}
+
+export interface WorkflowInstance<TInput, TOutput> {
+  readonly name: string
+
+  /** Start a new workflow execution */
+  start(input: TInput, options?: StartOptions): Promise<WorkflowHandle<TOutput>>
+
+  /** Get handle to existing workflow by ID */
+  get(workflowId: string): WorkflowHandle<TOutput>
+
+  /** List workflow executions */
+  list(options?: ListWorkflowOptions): Promise<WorkflowExecution<TOutput>[]>
+
+  /** Send a signal to a workflow */
+  signal(workflowId: string, signalName: string, data: unknown): Promise<void>
+
+  /** Cancel a workflow */
+  cancel(workflowId: string): Promise<void>
+
+  /** Resume stalled/crashed workflows (called internally by recovery loop) */
+  recover(): Promise<number>
+}
+
+export type WorkflowFunction<TInput, TOutput> = (
+  ctx: WorkflowContext<TInput>,
+  input: TInput
+) => Promise<TOutput>
+
+// ============================================================================
+// Cron Types (Scheduled Jobs)
+// ============================================================================
+
+export type CronExecutionStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface CronOptions {
+  name: string
+  schedule: string
+  timezone?: string
+  catchUp?: boolean
+  maxCatchUp?: number
+  trace?: boolean
+}
+
+export interface CronContext {
+  /** Job name */
+  readonly jobName: string
+  /** Scheduled execution time */
+  readonly scheduledTime: Date
+  /** Actual execution time */
+  readonly actualTime: Date
+  /** Unique execution ID */
+  readonly executionId: string
+  /** Database access */
+  readonly db: DBContext
+  /** Emit event to a Flow */
+  emit<T>(flow: FlowInstance<T>, data: T): Promise<void>
+}
+
+export type CronHandler<TOutput> = (ctx: CronContext) => Promise<TOutput>
+
+export interface CronExecution<TOutput = unknown> {
+  executionId: string
+  jobName: string
+  scheduledTime: Date
+  actualTime: Date
+  status: CronExecutionStatus
+  output?: TOutput
+  error?: string
+  durationMs?: number
+}
+
+export interface CronHistoryOptions {
+  limit?: number
+  since?: Date
+}
+
+export interface CronInstance<TOutput> {
+  readonly name: string
+  readonly schedule: string
+
+  /** Start the scheduler */
+  start(): void
+
+  /** Stop the scheduler */
+  stop(): void
+
+  /** Manual trigger */
+  trigger(): Promise<CronExecution<TOutput>>
+
+  /** Get execution history */
+  history(options?: CronHistoryOptions): Promise<CronExecution<TOutput>[]>
+
+  /** Get next scheduled execution time */
+  nextRun(): Date | null
+
+  /** Check if scheduler is running */
+  isRunning(): boolean
+}
+
+// ============================================================================
 // Type Inference Helpers (tRPC-style)
 // ============================================================================
 
@@ -675,3 +912,18 @@ export type InferFlows<T> = T extends ServerInstance<infer _A, infer F, infer _S
  * Helper to extract Signal types from a server
  */
 export type InferSignals<T> = T extends ServerInstance<infer _A, infer _F, infer S> ? S : never
+
+/**
+ * Extract the input type from a WorkflowInstance
+ */
+export type InferWorkflowInput<T> = T extends WorkflowInstance<infer I, infer _O> ? I : never
+
+/**
+ * Extract the output type from a WorkflowInstance
+ */
+export type InferWorkflowOutput<T> = T extends WorkflowInstance<infer _I, infer O> ? O : never
+
+/**
+ * Extract the output type from a CronInstance
+ */
+export type InferCronOutput<T> = T extends CronInstance<infer O> ? O : never
