@@ -1,6 +1,6 @@
 {
   "name": "@onepipe/runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Bun-native HTTP server for OnePipe applications",
   "type": "module",
   "main": "./src/index.ts",
@@ -38,7 +38,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@onepipe/sdk": "workspace:*"
+    "@onepipe/sdk": "^0.3.0"
   },
   "peerDependencies": {
     "@unbroken-protocol/server": "^0.1.0"

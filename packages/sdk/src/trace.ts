@@ -250,6 +250,84 @@ class NoopExporter implements TraceExporter {
   }
 }
 
+/**
+ * Dashboard exporter - sends spans to OnePipe Dashboard
+ */
+class DashboardExporter implements TraceExporter {
+  private endpoint: string
+  private serviceName: string
+
+  constructor(serviceName: string, endpoint?: string) {
+    this.serviceName = serviceName
+    this.endpoint = endpoint || process.env.ONEPIPE_DASHBOARD_URL || 'http://localhost:4001'
+  }
+
+  async export(spans: SpanData[]): Promise<void> {
+    // Group spans by traceId
+    const traceMap = new Map<string, SpanData[]>()
+    for (const span of spans) {
+      const existing = traceMap.get(span.traceId) || []
+      existing.push(span)
+      traceMap.set(span.traceId, existing)
+    }
+
+    // Send each trace
+    for (const [traceId, traceSpans] of traceMap) {
+      const rootSpan = traceSpans.find(s => !s.parentSpanId) || traceSpans[0]
+      const trace = {
+        traceId,
+        rootSpan: {
+          traceId,
+          spanId: rootSpan.spanId,
+          parentSpanId: rootSpan.parentSpanId,
+          name: rootSpan.name,
+          startTime: rootSpan.startTime,
+          endTime: rootSpan.endTime,
+          duration: rootSpan.endTime - rootSpan.startTime,
+          status: rootSpan.status === 'error' ? 'error' : 'ok',
+          statusMessage: rootSpan.statusMessage,
+          attributes: {
+            ...rootSpan.attributes,
+            'service.name': this.serviceName,
+          },
+          events: rootSpan.events,
+        },
+        spans: traceSpans.map(s => ({
+          traceId: s.traceId,
+          spanId: s.spanId,
+          parentSpanId: s.parentSpanId,
+          name: s.name,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          duration: s.endTime - s.startTime,
+          status: s.status === 'error' ? 'error' : 'ok',
+          statusMessage: s.statusMessage,
+          attributes: {
+            ...s.attributes,
+            'service.name': this.serviceName,
+          },
+          events: s.events,
+        })),
+        totalDuration: rootSpan.endTime - rootSpan.startTime,
+        status: rootSpan.status === 'error' ? 'error' : 'ok',
+        timestamp: Date.now(),
+        services: [this.serviceName],
+        spanCount: traceSpans.length,
+      }
+
+      try {
+        await fetch(`${this.endpoint}/api/dashboard/traces`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(trace),
+        })
+      } catch {
+        // Dashboard not running, ignore
+      }
+    }
+  }
+}
+
 export interface TracerInstance {
   readonly name: string
   span<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T>
@@ -268,9 +346,10 @@ export interface TracerInstance {
  */
 class TraceBuilder {
   private serviceName: string
-  private exporterType: 'console' | 'otlp' | 'noop' = 'console'
+  private exporterType: 'console' | 'otlp' | 'noop' | 'dashboard' = 'console'
   private otlpEndpoint?: string
   private otlpHeaders?: Record<string, string>
+  private dashboardEndpoint?: string
   private batchSize: number = 100
   private flushInterval: number = 5000
 
@@ -281,7 +360,7 @@ class TraceBuilder {
   /**
    * Set exporter type
    */
-  exporter(type: 'console' | 'otlp' | 'noop'): this {
+  exporter(type: 'console' | 'otlp' | 'noop' | 'dashboard'): this {
     this.exporterType = type
     return this
   }
@@ -293,6 +372,15 @@ class TraceBuilder {
     this.exporterType = 'otlp'
     this.otlpEndpoint = endpoint
     this.otlpHeaders = headers
+    return this
+  }
+
+  /**
+   * Set dashboard endpoint (for OnePipe Dashboard)
+   */
+  dashboard(endpoint?: string): this {
+    this.exporterType = 'dashboard'
+    this.dashboardEndpoint = endpoint
     return this
   }
 
@@ -317,6 +405,9 @@ class TraceBuilder {
           throw new Error('OTLP exporter requires an endpoint. Use .otlp(endpoint)')
         }
         exporter = new OTLPExporter(this.otlpEndpoint, this.otlpHeaders)
+        break
+      case 'dashboard':
+        exporter = new DashboardExporter(this.serviceName, this.dashboardEndpoint)
         break
       case 'noop':
         exporter = new NoopExporter()

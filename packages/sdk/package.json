@@ -1,6 +1,6 @@
 {
   "name": "@onepipe/sdk",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Stream-first developer platform SDK for Bun",
   "type": "module",
   "main": "./src/index.ts",
@@ -44,6 +44,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.208.0",
+    "@opentelemetry/resources": "^2.2.0",
+    "@opentelemetry/sdk-trace-base": "^2.2.0",
+    "@opentelemetry/semantic-conventions": "^1.38.0",
     "zod": "^3.24.0"
   },
   "peerDependencies": {

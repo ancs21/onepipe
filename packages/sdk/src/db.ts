@@ -24,7 +24,8 @@
  */
 
 import { Database as SQLiteDB } from 'bun:sqlite'
-import type { DBOptions, DBInstance, PoolOptions, DBContext, TableInfo, ColumnInfo } from './types'
+import type { DBOptions, DBInstance, PoolOptions, DBContext, TableInfo, ColumnInfo, QueryOptions } from './types'
+import { withSpan, isInitialized as isTracingInitialized } from './otel'
 
 // DB builder state
 interface DBBuilderState {
@@ -150,16 +151,34 @@ function createPostgresInstance(state: DBBuilderState): DBInstance {
     name: state.name,
     type: 'postgres',
 
-    async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+    async query<T>(sql: string, params: unknown[] = [], options?: QueryOptions): Promise<T[]> {
       await initConnection()
-      const startTime = state.trace ? performance.now() : 0
 
+      // Check if tracing should be enabled for this query
+      const shouldTrace = options?.trace ?? state.trace
+
+      // Create OTEL child span if tracing is enabled
+      if (shouldTrace && isTracingInitialized()) {
+        return withSpan('db.query', {
+          'db.system': 'postgres',
+          'db.name': state.name,
+          'db.statement': sql.substring(0, 200),
+          'db.params.count': params.length,
+        }, async () => {
+          // @ts-expect-error - Dynamic SQL client
+          const result = await sqlClient.unsafe(sql, params)
+          return result as T[]
+        })
+      }
+
+      // Non-traced path
+      const startTime = shouldTrace ? performance.now() : 0
       try {
         // @ts-expect-error - Dynamic SQL client
         const result = await sqlClient.unsafe(sql, params)
         return result as T[]
       } finally {
-        if (state.trace) {
+        if (shouldTrace) {
           logQuery(sql, performance.now() - startTime)
         }
       }
@@ -256,8 +275,27 @@ function createMySQLInstance(state: DBBuilderState): DBInstance {
     name: state.name,
     type: 'mysql',
 
-    async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+    async query<T>(sql: string, params: unknown[] = [], options?: QueryOptions): Promise<T[]> {
       await initConnection()
+
+      // Check if tracing should be enabled for this query
+      const shouldTrace = options?.trace ?? state.trace
+
+      // Create OTEL child span if tracing is enabled
+      if (shouldTrace && isTracingInitialized()) {
+        return withSpan('db.query', {
+          'db.system': 'mysql',
+          'db.name': state.name,
+          'db.statement': sql.substring(0, 200),
+          'db.params.count': params.length,
+        }, async () => {
+          // @ts-expect-error - Dynamic MySQL client
+          const result = await mysqlClient.query(sql, params)
+          return result as T[]
+        })
+      }
+
+      // Non-traced path
       // @ts-expect-error - Dynamic MySQL client
       const result = await mysqlClient.query(sql, params)
       return result as T[]
@@ -367,16 +405,34 @@ function createSQLiteInstance(state: DBBuilderState): DBInstance {
     name: state.name,
     type: 'sqlite',
 
-    async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
-      const startTime = state.trace ? performance.now() : 0
+    async query<T>(sql: string, params: unknown[] = [], options?: QueryOptions): Promise<T[]> {
+      // Check if tracing should be enabled for this query
+      const shouldTrace = options?.trace ?? state.trace
 
+      // Create OTEL child span if tracing is enabled
+      if (shouldTrace && isTracingInitialized()) {
+        return withSpan('db.query', {
+          'db.system': 'sqlite',
+          'db.name': state.name,
+          'db.statement': sql.substring(0, 200),
+          'db.params.count': params.length,
+        }, async () => {
+          const stmt = db.prepare(sql)
+          // @ts-expect-error - SQLite params typing
+          const result = stmt.all(...params) as T[]
+          return result
+        })
+      }
+
+      // Non-traced path
+      const startTime = shouldTrace ? performance.now() : 0
       try {
         const stmt = db.prepare(sql)
         // @ts-expect-error - SQLite params typing
         const result = stmt.all(...params) as T[]
         return result
       } finally {
-        if (state.trace) {
+        if (shouldTrace) {
           logQuery(sql, performance.now() - startTime)
         }
       }

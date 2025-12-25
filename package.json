@@ -9,8 +9,8 @@
     "examples"
   ],
   "scripts": {
-    "onepipe": "bun run packages/sdk/src/cli.ts",
-    "dev": "bun run packages/sdk/src/cli.ts dev",
+    "onepipe": "bun run packages/cli/src/index.ts",
+    "dev": "bun run packages/cli/src/index.ts dev",
     "build": "bun run --filter '*' build",
     "test": "bun test",
     "clean": "rm -rf node_modules packages/*/node_modules docs/node_modules",
@@ -26,5 +26,9 @@
     "@changesets/cli": "^2.29.8",
     "@types/bun": "latest",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@unbroken-protocol/server": "0.1.0",
+    "better-auth": "^1.4.9"
   }
 }

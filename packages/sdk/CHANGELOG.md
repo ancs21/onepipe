@@ -1,5 +1,17 @@
 # @onepipe/sdk
 
+## 0.3.1
+
+### Patch Changes
+
+- Update AGENTS.md with new primitives: Workflow, Cron, Storage, Migration, http client
+
+## 0.3.0
+
+### Minor Changes
+
+- Release v0.3.0 - SDK and package updates
+
 ## 0.2.0
 
 ### Minor Changes
