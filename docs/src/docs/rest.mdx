@@ -1,0 +1,181 @@
+# REST - API Builder
+
+Build REST APIs with a fluent builder. Routes, middleware, file uploads, OpenAPI docs.
+
+## The Problem
+
+Express-style APIs get messy fast:
+
+```typescript
+app.get('/api/users', authMiddleware, async (req, res) => {
+  try {
+    const users = await db.query('SELECT * FROM users')
+    res.json(users)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/users', authMiddleware, validateBody, async (req, res) => {
+  // more boilerplate...
+})
+```
+
+Error handling everywhere. Middleware chains. No type safety.
+
+## The Solution
+
+```typescript
+const api = REST.create('users')
+  .basePath('/api/users')
+  .db(db)
+  .get('/', async (ctx) => {
+    return ctx.db.query('SELECT * FROM users')
+  })
+  .post('/', async (ctx) => {
+    const { name } = ctx.body()
+    return ctx.created({ id: crypto.randomUUID(), name })
+  })
+  .build()
+```
+
+Return data directly. Errors are handled. Types flow through.
+
+## Basic Usage
+
+```typescript
+import { REST } from '@onepipe/sdk'
+
+const api = REST.create('todos')
+  .basePath('/api/todos')
+  .get('/', async (ctx) => {
+    return [{ id: '1', title: 'Learn OnePipe' }]
+  })
+  .build()
+```
+
+## HTTP Methods
+
+```typescript
+const api = REST.create('todos')
+  .basePath('/api/todos')
+  .get('/', async (ctx) => ctx.db.query('SELECT * FROM todos'))
+  .get('/:id', async (ctx) => {
+    const [todo] = await ctx.db.query(
+      'SELECT * FROM todos WHERE id = ?',
+      [ctx.params.id]
+    )
+    if (!todo) return ctx.notFound()
+    return todo
+  })
+  .post('/', async (ctx) => {
+    const { title } = ctx.body()
+    return ctx.created({ id: crypto.randomUUID(), title })
+  })
+  .put('/:id', async (ctx) => {
+    const { title } = ctx.body()
+    await ctx.db.query('UPDATE todos SET title = ? WHERE id = ?', [title, ctx.params.id])
+    return { id: ctx.params.id, title }
+  })
+  .delete('/:id', async (ctx) => {
+    await ctx.db.query('DELETE FROM todos WHERE id = ?', [ctx.params.id])
+    return ctx.noContent()
+  })
+  .build()
+```
+
+## Request Context
+
+| Property | Description |
+|----------|-------------|
+| `ctx.params` | Path parameters (`/:id` → `ctx.params.id`) |
+| `ctx.query` | Query string (`?page=1` → `ctx.query.page`) |
+| `ctx.headers` | Request headers |
+| `ctx.body()` | Parse JSON body |
+| `ctx.db` | Database instance |
+| `ctx.cache` | Cache instance |
+| `ctx.user` | Authenticated user |
+
+## Response Helpers
+
+```typescript
+ctx.json(data, 200)     // JSON response
+ctx.created(data)       // 201 Created
+ctx.noContent()         // 204 No Content
+ctx.notFound()          // 404 Not Found
+ctx.unauthorized()      // 401 Unauthorized
+ctx.forbidden()         // 403 Forbidden
+ctx.badRequest()        // 400 Bad Request
+```
+
+## File Uploads
+
+```typescript
+const api = REST.create('uploads')
+  .basePath('/api/uploads')
+  .post('/avatar', async (ctx) => {
+    const file = ctx.file('avatar')
+    if (!file) return ctx.badRequest('No file uploaded')
+
+    // File properties
+    console.log(file.name)  // original filename
+    console.log(file.type)  // MIME type
+    console.log(file.size)  // bytes
+
+    // Read contents
+    const buffer = await file.arrayBuffer()
+    const text = await file.text()
+
+    return { uploaded: file.name, size: file.size }
+  })
+  .post('/documents', async (ctx) => {
+    // Multiple files
+    const files = ctx.files('documents')
+    const description = ctx.formField('description')
+
+    return { count: files.length, description }
+  })
+  .build()
+```
+
+## Configuration
+
+```typescript
+const api = REST.create('api')
+  .basePath('/api')
+  .db(database)                           // inject database
+  .cache(cache)                           // inject cache
+  .auth(auth)                             // require authentication
+  .cors({ origin: 'https://example.com' }) // CORS headers
+  .trace()                                 // OpenTelemetry spans
+  .openapi({ title: 'My API' })           // generate OpenAPI spec
+  .build()
+```
+
+## Error Handling
+
+Throw `APIError` for typed errors:
+
+```typescript
+import { APIError } from '@onepipe/sdk'
+
+.post('/', async (ctx) => {
+  const { title } = ctx.body()
+  if (!title) {
+    throw APIError.invalidArgument('Title is required')
+  }
+  // ...
+})
+```
+
+Error codes: `notFound`, `invalidArgument`, `unauthorized`, `forbidden`, `unavailable`, `internal`.
+
+## Tips
+
+**Return data directly** - OnePipe wraps it in a Response for you.
+
+**Use `ctx.params` for path variables** - Type-safe access to `:id`, `:slug`, etc.
+
+**Inject dependencies with `.db()` and `.cache()`** - Cleaner than global imports.
+
+**Enable `.trace()` in production** - See exactly where time is spent.

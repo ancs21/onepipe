@@ -1,0 +1,328 @@
+# Observability
+
+Comprehensive observability with structured logging and Prometheus-compatible metrics.
+
+## Logging
+
+### Basic Usage
+
+```typescript
+import { Log } from '@onepipe/sdk'
+
+const logger = Log
+  .create('my-service')
+  .level('info')
+  .build()
+
+logger.info('User logged in', { userId: '123', email: 'user@example.com' })
+logger.error('Failed to process', { orderId: '456', error: err.message })
+```
+
+### Log Levels
+
+```typescript
+logger.debug('Detailed debugging info')     // level: 10
+logger.info('General information')          // level: 20
+logger.warn('Warning conditions')           // level: 30
+logger.error('Error conditions')            // level: 40
+logger.fatal('Critical failures')           // level: 50
+```
+
+### Pretty Printing
+
+Enable colored, human-readable output for development:
+
+```typescript
+const logger = Log
+  .create('my-service')
+  .level('debug')
+  .prettyPrint()
+  .build()
+
+// Output: INFO  [12:34:56.789] User logged in {"userId":"123"}
+```
+
+### Child Loggers
+
+Create loggers with additional context:
+
+```typescript
+const logger = Log.create('api').build()
+
+// Request-scoped logger
+const requestLogger = logger.child({
+  requestId: 'abc-123',
+  path: '/api/users'
+})
+
+requestLogger.info('Processing request')
+// Output: {"level":"info","message":"Processing request","requestId":"abc-123","path":"/api/users",...}
+
+// Add trace ID
+const tracedLogger = logger.withTraceId('trace-xyz')
+```
+
+### Transports
+
+#### Console (default)
+
+```typescript
+const logger = Log.create('my-service')
+  .console()  // Explicit console transport
+  .build()
+```
+
+#### File
+
+```typescript
+const logger = Log.create('my-service')
+  .file('./logs/app.log')
+  .build()
+```
+
+#### HTTP Stream
+
+```typescript
+const logger = Log.create('my-service')
+  .stream('https://logs.example.com/ingest')
+  .build()
+```
+
+#### Multiple Transports
+
+```typescript
+const logger = Log.create('my-service')
+  .console()
+  .file('./logs/app.log')
+  .stream('https://logs.example.com')
+  .build()
+```
+
+#### Custom Transport
+
+```typescript
+const customTransport = {
+  write(entry) {
+    // Send to your logging service
+    myLoggingService.log(entry)
+  }
+}
+
+const logger = Log.create('my-service')
+  .transport(customTransport)
+  .build()
+```
+
+### Global Logger
+
+```typescript
+const logger = Log.create('my-app').build()
+Log.setGlobal(logger)
+
+// Use anywhere
+Log.info('Application started')
+Log.error('Something went wrong', { error: err.message })
+```
+
+## Metrics
+
+### Basic Usage
+
+```typescript
+import { Metrics } from '@onepipe/sdk'
+
+const metrics = Metrics.create('my-service').build()
+```
+
+### Counter
+
+Monotonically increasing values:
+
+```typescript
+const requestCounter = metrics.counter('http_requests_total', {
+  help: 'Total HTTP requests',
+  labels: ['method', 'path', 'status']
+})
+
+// Increment by 1
+requestCounter.inc({ method: 'GET', path: '/api', status: '200' })
+
+// Increment by N
+requestCounter.inc({ method: 'POST', path: '/api', status: '201' }, 5)
+
+// Get current value
+const count = requestCounter.get({ method: 'GET', path: '/api', status: '200' })
+```
+
+### Gauge
+
+Values that go up and down:
+
+```typescript
+const activeConnections = metrics.gauge('active_connections', {
+  help: 'Current active connections'
+})
+
+// Set absolute value
+activeConnections.set(42)
+
+// Increment
+activeConnections.inc()
+activeConnections.inc({}, 5)
+
+// Decrement
+activeConnections.dec()
+activeConnections.dec({}, 3)
+```
+
+### Histogram
+
+Distribution of values (latency, sizes, etc.):
+
+```typescript
+const requestDuration = metrics.histogram('http_request_duration_seconds', {
+  help: 'Request duration in seconds',
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 5]
+})
+
+// Record a value
+requestDuration.observe(0.123)
+
+// Time a function
+const endTimer = requestDuration.startTimer()
+await processRequest()
+endTimer()  // Automatically records duration
+```
+
+### Prometheus Endpoint
+
+Expose metrics for scraping:
+
+```typescript
+const api = REST.create('app')
+  .get('/metrics', metrics.handler())
+  .build()
+```
+
+Output:
+```
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",path="/api",status="200"} 1523
+
+# HELP active_connections Current active connections
+# TYPE active_connections gauge
+active_connections 42
+
+# HELP http_request_duration_seconds Request duration in seconds
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.01"} 50
+http_request_duration_seconds_bucket{le="0.05"} 200
+http_request_duration_seconds_bucket{le="0.1"} 450
+http_request_duration_seconds_bucket{le="+Inf"} 500
+http_request_duration_seconds_sum 45.5
+http_request_duration_seconds_count 500
+```
+
+### Metric Prefix
+
+Add a prefix to all metric names:
+
+```typescript
+const metrics = Metrics.create('my-service')
+  .withPrefix('myapp')
+  .build()
+
+const counter = metrics.counter('requests')
+// Metric name: myapp_requests
+```
+
+### Default Labels
+
+Add labels to all metrics:
+
+```typescript
+const metrics = Metrics.create('my-service')
+  .withLabels({
+    app: 'my-app',
+    environment: 'production'
+  })
+  .build()
+```
+
+### Global Metrics
+
+```typescript
+const metrics = Metrics.create('my-app').build()
+Metrics.setGlobal(metrics)
+
+// Use anywhere
+Metrics.counter('events_processed').inc()
+Metrics.gauge('queue_size').set(100)
+```
+
+## Integration Example
+
+```typescript
+import { REST, Log, Metrics, initTracing } from '@onepipe/sdk'
+
+// Initialize tracing
+initTracing({ endpoint: 'http://localhost:4318/v1/traces', serviceName: 'my-api' })
+
+// Initialize observability
+const logger = Log.create('api').level('info').prettyPrint().build()
+Log.setGlobal(logger)
+
+const metrics = Metrics.create('api').build()
+Metrics.setGlobal(metrics)
+
+const requestCounter = metrics.counter('http_requests_total', {
+  labels: ['method', 'path', 'status']
+})
+const requestDuration = metrics.histogram('http_request_duration_seconds')
+
+// Helper to wrap handlers with observability
+function withMetrics<T>(
+  method: string,
+  path: string,
+  handler: (ctx: any) => Promise<T>
+) {
+  return async (ctx: any) => {
+    const timer = requestDuration.startTimer()
+    const requestLogger = logger.child({ path })
+
+    requestLogger.info('Request started', { method })
+
+    try {
+      const result = await handler(ctx)
+      requestCounter.inc({ method, path, status: '200' })
+      timer()
+      requestLogger.info('Request completed', { status: 200 })
+      return result
+    } catch (error: any) {
+      requestCounter.inc({ method, path, status: '500' })
+      timer()
+      requestLogger.error('Request failed', { error: error.message })
+      throw error
+    }
+  }
+}
+
+const api = REST.create('api')
+  .trace()  // Enable OpenTelemetry tracing
+  .get('/users', withMetrics('GET', '/users', async (ctx) => {
+    return ctx.db.query('SELECT * FROM users')
+  }))
+  .get('/metrics', metrics.handler())
+  .build()
+```
+
+## Best Practices
+
+1. **Use structured logging** - Include context as objects, not string interpolation
+2. **Set appropriate log levels** - Debug for development, info/warn for production
+3. **Use child loggers** - Add request-specific context
+4. **Name metrics carefully** - Follow Prometheus naming conventions
+5. **Use histograms for latency** - Not gauges
+6. **Add meaningful labels** - But avoid high cardinality
+7. **Expose /metrics endpoint** - For Prometheus scraping

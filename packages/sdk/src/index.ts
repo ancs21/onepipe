@@ -26,6 +26,7 @@ export { Server } from './server'
 export { Channel } from './channel'
 export { DB } from './db'
 export { Cache } from './cache'
+export { PGCache } from './pg-cache'
 export { Storage } from './storage'
 export { Auth, createAuthRoutes } from './auth'
 export { Projection } from './projection'
@@ -33,6 +34,18 @@ export { Signal } from './signal'
 export { Migration } from './migration'
 export { Workflow } from './workflow'
 export { Cron } from './cron'
+export { Lifecycle } from './lifecycle'
+
+// Runtime Manifest (for CLI auto-discovery)
+export {
+  registerPrimitive,
+  getManifest,
+  clearManifest,
+  getInfrastructureNeeds,
+  type ManifestEntry,
+  type PrimitiveType,
+  type InfrastructureType,
+} from './manifest'
 
 // Telemetry
 export { Trace } from './trace'
@@ -48,6 +61,7 @@ export {
   isInitialized as isTracingInitialized,
   withSpan,
   SpanStatusCode,
+  setActiveContext,
   type TracingOptions,
   type Tracer,
   type Span,
@@ -55,6 +69,10 @@ export {
 
 // Traced HTTP client for dependent services
 export { http, tracedFetch } from './http-client'
+
+// Service-to-Service Communication (Encore-style)
+export { ServiceClient, type ServiceClientInstance, type ServiceClientOptions, type RequestOptions } from './service-client'
+export { ServiceRegistry, getServiceUrl, type ServiceRegistryInstance, type ServiceConfig } from './registry'
 
 // Config
 export { defineConfig, Config, loadConfig, getEnvironmentConfig } from './config'
@@ -102,6 +120,9 @@ export type {
   // DB types
   DBOptions,
   DBInstance,
+  DrizzleDBInstance,
+  DrizzleInstance,
+  DrizzleQueryAPI,
   DBContext,
   PoolOptions,
 
@@ -136,6 +157,7 @@ export type {
   OnePipeConfig,
   EnvironmentConfig,
   DeployHooks,
+  ServiceDefinition,
 
   // Workflow types
   WorkflowOptions,
@@ -159,6 +181,16 @@ export type {
   CronExecutionStatus,
   CronHistoryOptions,
 
+  // Lifecycle types
+  LifecycleOptions,
+  LifecycleInstance,
+  HealthStatus,
+  HealthCheckResult,
+  HealthResponse,
+  ReadinessResponse,
+  HealthCheckFn,
+  ShutdownHook,
+
   // Type Inference Helpers (tRPC-style)
   InferFlowEvent,
   InferSignalValue,
@@ -171,3 +203,9 @@ export type {
   TypedRESTInstance,
   TypedRouteDefinition,
 } from './types'
+
+// PGCache types
+export type {
+  PGCacheOptions,
+  PGCacheInstance,
+} from './pg-cache'

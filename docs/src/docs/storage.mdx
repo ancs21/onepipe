@@ -1,0 +1,225 @@
+# Storage - Object Storage
+
+S3-compatible object storage. Works with AWS, Cloudflare R2, DigitalOcean Spaces, MinIO.
+
+## The Problem
+
+Every S3 SDK is different:
+
+```typescript
+// AWS SDK v3
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+const client = new S3Client({ region: 'us-east-1' })
+await client.send(new PutObjectCommand({
+  Bucket: 'my-bucket',
+  Key: 'file.txt',
+  Body: 'Hello'
+}))
+
+// Different API for R2, Spaces, MinIO...
+```
+
+## The Solution
+
+```typescript
+const storage = Storage.create('uploads')
+  .bucket('my-bucket')
+  .endpoint('https://s3.us-east-1.amazonaws.com')
+  .build()
+
+await storage.write('file.txt', 'Hello')
+const content = await storage.file('file.txt').text()
+```
+
+Same API for AWS S3, R2, Spaces, MinIO.
+
+## Basic Usage
+
+```typescript
+import { Storage } from '@onepipe/sdk'
+
+const storage = Storage.create('uploads')
+  .bucket('my-app-uploads')
+  .endpoint('https://s3.us-east-1.amazonaws.com')
+  .region('us-east-1')
+  .build()
+```
+
+## Writing Files
+
+```typescript
+// Write string
+await storage.write('docs/readme.txt', 'Hello World')
+
+// Write buffer
+const imageBuffer = await fetchImage()
+await storage.write('images/photo.jpg', imageBuffer, {
+  type: 'image/jpeg'
+})
+
+// Write from stream
+await storage.write('videos/clip.mp4', file.stream(), {
+  type: 'video/mp4'
+})
+
+// Public file
+await storage.write('public/logo.png', logoData, {
+  type: 'image/png',
+  acl: 'public-read'
+})
+```
+
+## Reading Files
+
+```typescript
+const file = storage.file('images/photo.jpg')
+
+// Read as text
+const text = await file.text()
+
+// Read as JSON
+const data = await file.json<{ name: string }>()
+
+// Read as ArrayBuffer
+const buffer = await file.arrayBuffer()
+
+// Stream file
+const stream = file.stream()
+```
+
+## File Properties
+
+```typescript
+const file = storage.file('images/photo.jpg')
+
+const exists = await file.exists()
+
+// After checking existence
+console.log(file.size)          // bytes
+console.log(file.type)          // MIME type
+console.log(file.lastModified)  // Date
+```
+
+## Presigned URLs
+
+Temporary URLs for direct browser access:
+
+```typescript
+// Download URL (1 hour)
+const url = storage.presign('images/photo.jpg')
+
+// Custom expiration
+const url = storage.presign('images/photo.jpg', {
+  expiresIn: 300  // 5 minutes
+})
+
+// Upload URL (let browser upload directly)
+const uploadUrl = storage.presign('uploads/new-file.jpg', {
+  method: 'PUT',
+  expiresIn: 3600
+})
+```
+
+## Listing Files
+
+```typescript
+// List all
+const result = await storage.list()
+console.log(result.files)  // [{ key, size, lastModified }, ...]
+
+// With prefix
+const images = await storage.list({ prefix: 'images/' })
+
+// Pagination
+const page1 = await storage.list({ limit: 100 })
+if (page1.hasMore) {
+  const page2 = await storage.list({ cursor: page1.cursor })
+}
+```
+
+## Deleting Files
+
+```typescript
+await storage.delete('images/photo.jpg')
+
+// Or via file reference
+await storage.file('images/photo.jpg').delete()
+```
+
+## Provider Examples
+
+### AWS S3
+
+```typescript
+const storage = Storage.create('s3')
+  .bucket('my-bucket')
+  .endpoint('https://s3.us-east-1.amazonaws.com')
+  .region('us-east-1')
+  .build()
+```
+
+### Cloudflare R2
+
+```typescript
+const storage = Storage.create('r2')
+  .bucket('my-bucket')
+  .endpoint('https://ACCOUNT_ID.r2.cloudflarestorage.com')
+  .build()
+```
+
+### DigitalOcean Spaces
+
+```typescript
+const storage = Storage.create('spaces')
+  .bucket('my-bucket')
+  .endpoint('https://nyc3.digitaloceanspaces.com')
+  .region('nyc3')
+  .build()
+```
+
+### MinIO (Self-hosted)
+
+```typescript
+const storage = Storage.create('minio')
+  .bucket('my-bucket')
+  .endpoint('http://localhost:9000')
+  .credentials({
+    accessKeyId: 'minioadmin',
+    secretAccessKey: 'minioadmin'
+  })
+  .build()
+```
+
+## With REST API
+
+```typescript
+const api = REST.create('files')
+  .post('/upload', async (ctx) => {
+    const file = ctx.file('file')
+    const key = `uploads/${Date.now()}-${file.name}`
+
+    await storage.write(key, await file.arrayBuffer(), {
+      type: file.type
+    })
+
+    const url = storage.presign(key, { expiresIn: 3600 })
+    return ctx.created({ key, url })
+  })
+  .get('/download/:key', async (ctx) => {
+    const file = storage.file(ctx.params.key)
+    if (!await file.exists()) return ctx.notFound()
+
+    return ctx.redirect(file.presign({ expiresIn: 300 }))
+  })
+  .build()
+```
+
+## Tips
+
+**Use presigned URLs for uploads** - Browser uploads directly to S3, bypasses your server.
+
+**Set content types** - Browsers need correct MIME types to display files.
+
+**Use prefixes as folders** - `images/2024/photo.jpg` is organized and listable.
+
+**Check `.exists()` before reading** - Avoid errors on missing files.

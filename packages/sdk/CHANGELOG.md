@@ -1,5 +1,11 @@
 # @onepipe/sdk
 
+## 0.4.0
+
+### Minor Changes
+
+- Bump all packages to next minor version
+
 ## 0.3.1
 
 ### Patch Changes

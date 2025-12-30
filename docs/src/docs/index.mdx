@@ -1,0 +1,110 @@
+# Getting Started
+
+OnePipe is a stream-first developer platform SDK for Bun. It provides a fluent builder API for creating REST APIs, event flows, database connections, projections, signals, and more.
+
+## The Philosophy
+
+Reduce cognitive load:
+
+- **One language** — TypeScript
+- **One runtime** — Bun
+- **One primary database** — PostgreSQL
+- **One builder pattern** — for all primitives
+- **One mental model** — events as source of truth
+
+## Installation
+
+```bash
+bun add @onepipe/sdk @onepipe/runtime
+```
+
+## Quick Start
+
+```typescript
+import { REST, DB } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+// Create a database connection
+const db = DB.create('main')
+  .sqlite(':memory:')
+  .build()
+
+// Initialize the database
+await db.query(`
+  CREATE TABLE IF NOT EXISTS todos (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    completed INTEGER DEFAULT 0
+  )
+`)
+
+// Create a REST API
+const api = REST.create('todos')
+  .basePath('/api/todos')
+  .db(db)
+  .get('/', async (ctx) => {
+    return ctx.db.query('SELECT * FROM todos')
+  })
+  .post('/', async (ctx) => {
+    const { title } = ctx.body()
+    const id = crypto.randomUUID()
+    await ctx.db.query(
+      'INSERT INTO todos (id, title) VALUES (?, ?)',
+      [id, title]
+    )
+    return ctx.created({ id, title, completed: false })
+  })
+  .build()
+
+// Start the server
+serve({
+  port: 3000,
+  rest: [api],
+})
+```
+
+## Core Concepts
+
+### Builder Pattern
+
+All OnePipe primitives use a fluent builder pattern:
+
+```typescript
+const instance = Primitive.create('name')
+  .option1(value)
+  .option2(value)
+  .build()
+```
+
+### Primitives
+
+| Primitive | Purpose |
+|-----------|---------|
+| REST | RESTful API endpoints |
+| DB | Database connections (PostgreSQL, MySQL, SQLite) |
+| Flow | Durable event streams |
+| Projection | Materialized views from events |
+| Signal | Reactive state with persistence |
+| Channel | RPC handlers with retry |
+| Cache | Redis caching |
+| PGCache | PostgreSQL caching (no Redis needed) |
+| Storage | S3-compatible object storage |
+| Auth | Authentication (better-auth) |
+| Workflow | Durable workflows with PostgreSQL |
+| Cron | Scheduled jobs with distributed locking |
+| Server | Combines multiple APIs |
+
+## CLI
+
+Run OnePipe commands with `bunx`:
+
+```bash
+# Start development server
+bunx @onepipe/cli dev --app ./src/server.ts
+
+# Deploy to Docker
+bunx @onepipe/cli deploy production
+
+# Show help
+bunx @onepipe/cli --help
+```

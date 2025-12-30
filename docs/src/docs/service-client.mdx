@@ -1,0 +1,225 @@
+# Service Communication
+
+OnePipe provides traced HTTP clients for service-to-service communication in microservices architectures. All service calls automatically integrate with OpenTelemetry tracing and appear in the Dashboard's dependency graph.
+
+## ServiceClient
+
+The `ServiceClient` is a traced HTTP client that adds `target.service` attributes to spans for dependency tracking.
+
+```typescript
+import { ServiceClient } from '@onepipe/sdk'
+
+// Create a client for the users service
+const users = ServiceClient.create('users')
+  .baseUrl(process.env.USERS_URL || 'http://localhost:3001')
+  .timeout(5000)
+  .retry(3)
+  .build()
+
+// Make traced requests
+const user = await users.get<User>('/api/users/123')
+await users.post<User>('/api/users', { name: 'Alice', email: 'alice@example.com' })
+```
+
+### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `baseUrl(url)` | Set the base URL for the service |
+| `timeout(ms)` | Set request timeout in milliseconds (default: 30000) |
+| `retry(count, delayMs?)` | Set retry count and delay for failed requests |
+| `header(name, value)` | Add a default header to all requests |
+| `headers(headers)` | Add multiple default headers |
+
+### HTTP Methods
+
+All methods return typed responses and support request options:
+
+```typescript
+// GET with typed response
+const user = await users.get<User>('/api/users/123')
+
+// POST with body and typed response
+const created = await users.post<User>('/api/users', { name: 'Bob' })
+
+// PUT, PATCH, DELETE
+await users.put<User>('/api/users/123', { name: 'Updated' })
+await users.patch<User>('/api/users/123', { name: 'Patched' })
+await users.delete<void>('/api/users/123')
+
+// With request options
+const result = await users.get<User>('/api/users', {
+  query: { limit: 10, offset: 0 },
+  headers: { 'X-Custom': 'value' },
+  timeout: 10000, // Override timeout
+})
+```
+
+## ServiceRegistry
+
+For applications with multiple services, use `ServiceRegistry` to centralize configuration:
+
+```typescript
+import { ServiceRegistry, getServiceUrl } from '@onepipe/sdk'
+
+// Define all services in one place
+export const services = ServiceRegistry.create()
+  .service('users', getServiceUrl('users', 'http://localhost:3001'))
+  .service('orders', getServiceUrl('orders', 'http://localhost:3002'))
+  .service('payments', getServiceUrl('payments', 'http://localhost:3003'))
+  .timeout(5000)  // Default timeout for all services
+  .retry(3)       // Default retries for all services
+  .build()
+
+// Use in handlers
+const user = await services.users.get<User>('/api/users/123')
+const order = await services.orders.post<Order>('/api/orders', {
+  userId: user.id,
+  items: [{ productId: 'abc', quantity: 2 }]
+})
+```
+
+### Environment Variables
+
+The `getServiceUrl` helper reads from environment variables with a standard naming convention:
+
+```typescript
+// Looks for USERS_SERVICE_URL environment variable
+const url = getServiceUrl('users', 'http://localhost:3001')
+// Uses fallback if not set
+```
+
+| Service Name | Environment Variable |
+|--------------|---------------------|
+| `users` | `USERS_SERVICE_URL` |
+| `order-service` | `ORDER_SERVICE_SERVICE_URL` |
+| `payments` | `PAYMENTS_SERVICE_URL` |
+
+### Health Checks
+
+Check the health of all registered services:
+
+```typescript
+const health = await services.healthCheck()
+// {
+//   users: { healthy: true, latency: 45 },
+//   orders: { healthy: false, latency: 127, error: 'HTTP 503' },
+//   payments: { healthy: true, latency: 32 }
+// }
+```
+
+## Tracing Integration
+
+When [tracing is enabled](/docs/tracing), service calls automatically:
+
+1. Create spans with `target.service` attribute
+2. Propagate trace context to downstream services
+3. Record HTTP method, URL, and status code
+4. Appear in the Dashboard's dependency graph
+
+```typescript
+import { initTracing } from '@onepipe/sdk'
+
+// Initialize tracing
+initTracing({
+  serviceName: 'api-gateway',
+  endpoint: 'http://localhost:4000/v1/traces'
+})
+
+// Service calls are now automatically traced
+const user = await users.get<User>('/api/users/123')
+// Creates span: "GET users/api/users/123"
+// Attributes: target.service=users, http.method=GET, http.status_code=200
+```
+
+## Error Handling
+
+Service clients throw `APIError` for HTTP errors:
+
+```typescript
+import { APIError } from '@onepipe/sdk'
+
+try {
+  const user = await users.get<User>('/api/users/invalid')
+} catch (error) {
+  if (error instanceof APIError) {
+    console.log(error.code)    // 'not_found'
+    console.log(error.status)  // 404
+    console.log(error.message) // 'User not found'
+  }
+}
+```
+
+Errors are automatically classified:
+- 4xx errors: Not retried (client errors)
+- 5xx errors: Retried with exponential backoff
+- Timeouts: Retried with exponential backoff
+
+## Dashboard Visualization
+
+The Dashboard's Services page shows a dependency graph where:
+
+- **Nodes** represent services
+- **Edges** show service-to-service calls with:
+  - Call count
+  - Average latency
+  - Error count (if any)
+- **Edge color** indicates health:
+  - Teal: Healthy (<1% errors)
+  - Amber: Warning (1-10% errors)
+  - Red: Errors (>10% errors)
+- **Edge thickness** scales with call volume
+
+## Complete Example
+
+```typescript
+// services.ts
+import { ServiceRegistry, getServiceUrl } from '@onepipe/sdk'
+
+export const services = ServiceRegistry.create()
+  .service('users', getServiceUrl('users', 'http://localhost:3001'))
+  .service('inventory', getServiceUrl('inventory', 'http://localhost:3002'))
+  .service('payments', getServiceUrl('payments', 'http://localhost:3003'))
+  .timeout(5000)
+  .retry(2, 500)
+  .build()
+
+// orders.ts
+import { REST, APIError, initTracing } from '@onepipe/sdk'
+import { services } from './services'
+
+initTracing({ serviceName: 'orders', endpoint: 'http://localhost:4000/v1/traces' })
+
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .trace()
+  .post('/', async (ctx) => {
+    const body = await ctx.body<{ userId: string; items: { productId: string; quantity: number }[] }>()
+
+    // Verify user exists (traced call to users service)
+    const user = await services.users.get<{ id: string; name: string }>(`/api/users/${body.userId}`)
+
+    // Check inventory (traced call to inventory service)
+    for (const item of body.items) {
+      const stock = await services.inventory.get<{ available: number }>(`/api/products/${item.productId}/stock`)
+      if (stock.available < item.quantity) {
+        throw APIError.invalidArgument(`Insufficient stock for ${item.productId}`)
+      }
+    }
+
+    // Process payment (traced call to payments service)
+    const payment = await services.payments.post<{ transactionId: string }>('/api/charge', {
+      userId: body.userId,
+      amount: calculateTotal(body.items)
+    })
+
+    // Create order
+    return ctx.created({
+      id: crypto.randomUUID(),
+      userId: body.userId,
+      items: body.items,
+      transactionId: payment.transactionId
+    })
+  })
+  .build()
+```

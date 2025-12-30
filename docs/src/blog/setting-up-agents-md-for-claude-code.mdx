@@ -1,0 +1,260 @@
+Want Claude Code to understand your codebase instantly? Create an `AGENTS.md` file. This simple practice dramatically improves AI-assisted development by giving Claude the context it needs to write correct code on the first try.
+
+## What is AGENTS.md?
+
+`AGENTS.md` is a markdown file that provides instructions to AI coding agents like Claude Code, Cursor, and GitHub Copilot. It's like a README specifically for AI assistants.
+
+Claude Code automatically reads these files:
+- **`CLAUDE.md`** - Primary instructions file
+- **`AGENTS.md`** - Agent-specific guidelines
+
+```
+your-project/
+├── CLAUDE.md          # Read for all work
+├── AGENTS.md          # Read for all work
+├── packages/
+│   └── api/
+│       └── AGENTS.md  # Read when working in /packages/api
+└── docs/
+    └── AGENTS.md      # Read when working in /docs
+```
+
+## Why It Matters
+
+Without context, AI assistants make assumptions that may not match your project:
+
+```typescript
+// Without AGENTS.md - Claude might generate:
+app.get('/users', (req, res) => {
+  res.json(users)
+})
+
+// With AGENTS.md - Claude knows your patterns:
+const api = REST.create('users')
+  .basePath('/api/users')
+  .get('/', async (ctx) => ctx.json(users))
+  .build()
+```
+
+## What to Include
+
+### 1. Commands
+
+```markdown
+## Commands
+
+\`\`\`bash
+# Install dependencies
+bun install
+
+# Run development server
+bun run dev
+
+# Run tests
+bun test
+
+# Type check
+bun run typecheck
+
+# Build
+bun run build
+\`\`\`
+```
+
+### 2. Project Structure
+
+```markdown
+## Project Structure
+
+\`\`\`
+src/
+  components/    # React components
+  hooks/         # Custom React hooks
+  lib/           # Utility functions
+  pages/         # Page components
+  api/           # API routes
+tests/           # Test files
+\`\`\`
+```
+
+### 3. Code Patterns
+
+```markdown
+## Code Patterns
+
+### API Endpoints
+Use the REST builder pattern:
+\`\`\`typescript
+const api = REST.create('resource')
+  .basePath('/api/resource')
+  .get('/', handler)
+  .build()
+\`\`\`
+
+### Error Handling
+Always use APIError class:
+\`\`\`typescript
+throw APIError.notFound('Resource not found')
+\`\`\`
+```
+
+### 4. Boundaries
+
+```markdown
+## Boundaries
+
+### Always do
+- Use TypeScript strict mode
+- Write tests for new features
+- Use the builder pattern
+
+### Ask first
+- Adding new dependencies
+- Changing public APIs
+- Modifying database schemas
+
+### Never do
+- Skip type checking
+- Commit without tests
+- Use `any` type
+```
+
+## Real Example: OnePipe AGENTS.md
+
+Here's the actual `AGENTS.md` we use for OnePipe:
+
+```markdown
+# AGENTS.md
+
+Instructions for AI coding agents working on OnePipe.
+
+## Commands
+
+\`\`\`bash
+bun install              # Install
+bun run dev              # Dev server
+bun test                 # Run tests
+bun run typecheck        # Type check
+bun run build            # Build all
+\`\`\`
+
+## Code Style
+
+### Builder Pattern
+All primitives use fluent builders:
+\`\`\`typescript
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .db(database)
+  .get('/', async (ctx) => ctx.db.query('SELECT * FROM orders'))
+  .build()
+\`\`\`
+
+### Error Handling
+\`\`\`typescript
+throw APIError.notFound('Resource not found')
+throw APIError.invalidArgument('Title is required')
+\`\`\`
+
+## Boundaries
+
+### Always do
+- Use `.build()` at the end of builders
+- Use `APIError` for error responses
+- Run `bun test` after changes
+
+### Never do
+- Skip `.build()` on primitives
+- Use `throw new Error()` in handlers
+- Commit without running tests
+```
+
+## Subdirectory-Specific Files
+
+Create `AGENTS.md` in subdirectories for specialized context:
+
+```markdown
+# docs/AGENTS.md
+
+## Adding a Blog Post
+
+1. Create MDX file: `src/blog/my-post.mdx`
+2. Add metadata to `src/blog/posts.ts`
+3. Register in `src/pages/BlogPostPage.tsx`
+
+**Important**: No H1 in MDX - title comes from metadata.
+
+## Adding Documentation
+
+1. Create MDX: `src/docs/feature.mdx`
+2. Add route in `DocsPage.tsx`
+3. Add to sidebar in `Layout.tsx`
+```
+
+## Tips for Effective AGENTS.md
+
+### Be Specific About Patterns
+
+```markdown
+# Bad - too vague
+Use good error handling.
+
+# Good - shows exactly what to do
+Use APIError class for all errors:
+\`\`\`typescript
+throw APIError.notFound('User not found')
+throw APIError.invalidArgument('Email is required')
+\`\`\`
+```
+
+### Include Anti-Patterns
+
+```markdown
+### Don't do this
+\`\`\`typescript
+// Bad - raw throw
+throw new Error('Not found')
+
+// Bad - missing build()
+const api = REST.create('users').get('/', handler)
+\`\`\`
+
+### Do this instead
+\`\`\`typescript
+// Good - typed error
+throw APIError.notFound('User not found')
+
+// Good - complete builder
+const api = REST.create('users').get('/', handler).build()
+\`\`\`
+```
+
+### Keep It Updated
+
+When you add new patterns or change conventions, update `AGENTS.md`. Outdated instructions are worse than none.
+
+## The Productivity Impact
+
+With a well-crafted `AGENTS.md`:
+
+| Task | Without | With AGENTS.md |
+|------|---------|----------------|
+| New endpoint | 3-4 iterations | 1 iteration |
+| Error handling | Often wrong pattern | Correct first time |
+| Test writing | Generic style | Project style |
+| Code review fixes | Many | Few |
+
+## Getting Started
+
+Create your `AGENTS.md` in 5 minutes:
+
+1. **Copy your README** commands section
+2. **Add your project structure** with brief descriptions
+3. **Include 2-3 code patterns** you use frequently
+4. **List your boundaries** (always/ask/never)
+
+That's it. Claude Code will immediately start using your conventions.
+
+---
+
+*The best documentation is the kind that helps both humans and AI understand your code.*

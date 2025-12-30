@@ -43,6 +43,7 @@ import type {
   FlowInstance,
   WorkflowInstance,
 } from './types'
+import { registerPrimitive } from './manifest'
 
 // ============================================================================
 // PostgreSQL Schema Setup
@@ -345,6 +346,15 @@ class CronBuilder<TOutput = void> {
     if (!this.state.handler && !this.state.workflow) {
       throw new Error(`Cron "${this.state.name}" requires either a handler or workflow`)
     }
+
+    // Register with manifest for CLI auto-discovery
+    registerPrimitive({
+      primitive: 'cron',
+      name: this.state.name,
+      infrastructure: 'postgresql',
+      config: { schedule: this.state.schedule },
+    })
+
     return new CronInstanceImpl<TOutput>(this.state)
   }
 }
@@ -465,7 +475,8 @@ class CronInstanceImpl<TOutput> implements CronInstance<TOutput> {
   }
 
   async trigger(): Promise<CronExecution<TOutput>> {
-    await this.ensureSchema()
+    // Initialize to ensure job is registered (required for FK constraint)
+    await this.initialize()
 
     const scheduledTime = new Date()
     const executionId = `${this.name}_manual_${crypto.randomUUID()}`
@@ -682,6 +693,18 @@ class CronInstanceImpl<TOutput> implements CronInstance<TOutput> {
     let error: string | undefined
     let status: CronExecutionStatus = 'completed'
 
+    // Start heartbeat to renew lock during long-running jobs
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await this.renewLock()
+        if (this.traceEnabled) {
+          console.debug(`[Cron:${this.name}] Lock renewed for execution ${executionId}`)
+        }
+      } catch (err) {
+        console.error(`[Cron:${this.name}] Failed to renew lock:`, err)
+      }
+    }, 10_000) // Renew every 10 seconds
+
     try {
       if (this.traceEnabled) {
         console.debug(`[Cron:${this.name}] Executing job (scheduled: ${scheduledTime.toISOString()})`)
@@ -713,6 +736,9 @@ class CronInstanceImpl<TOutput> implements CronInstance<TOutput> {
       if (this.traceEnabled) {
         console.error(`[Cron:${this.name}] Job failed:`, err)
       }
+    } finally {
+      // Stop heartbeat
+      clearInterval(heartbeatInterval)
     }
 
     const durationMs = Date.now() - startTime
@@ -735,6 +761,19 @@ class CronInstanceImpl<TOutput> implements CronInstance<TOutput> {
       error,
       durationMs,
     }
+  }
+
+  /**
+   * Renew the lock for long-running jobs
+   */
+  private async renewLock(): Promise<void> {
+    await this.db.query(
+      `UPDATE _onepipe_cron_locks
+       SET expires_at = NOW() + INTERVAL '30 seconds', locked_at = NOW()
+       WHERE job_name = $1 AND locked_by = $2`,
+      [this.name, this.instanceId],
+      { trace: false }
+    )
   }
 
   private async tryLock(): Promise<boolean> {

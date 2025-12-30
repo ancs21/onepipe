@@ -1,0 +1,202 @@
+When we set out to build OnePipe, we had a clear vision: create the best developer experience for building event-driven backends in TypeScript. After evaluating every major JavaScript runtime, we chose Bun. Here's why.
+
+## Speed That Matters
+
+Bun isn't just fast in benchmarks - it's fast in ways that matter for real applications:
+
+- **Startup time**: Bun starts in milliseconds, not seconds. This matters for serverless, for development iteration, and for CLI tools.
+- **Runtime performance**: Bun's JavaScriptCore engine and native implementations of common APIs outperform Node.js in most real-world scenarios.
+- **Package installation**: `bun install` is 10-30x faster than npm. When you have hundreds of dependencies, this adds up.
+
+```bash
+# Node.js + npm
+$ time npm install
+real    0m24.532s
+
+# Bun
+$ time bun install
+real    0m0.847s
+```
+
+## Native TypeScript
+
+No more build steps. No more source maps. No more waiting for tsc to finish.
+
+Bun runs TypeScript natively:
+
+```typescript
+// Just run it
+bun run server.ts
+```
+
+This dramatically simplifies development workflows. Your production code is the same code you're developing with - no transpilation surprises.
+
+## Built-in SQLite
+
+One of Bun's most underrated features is its native SQLite support via `bun:sqlite`. For OnePipe, this is transformative:
+
+```typescript
+import { Database } from 'bun:sqlite'
+
+const db = new Database('app.db')
+const users = db.query('SELECT * FROM users WHERE active = ?').all(true)
+```
+
+SQLite is perfect for:
+- **Event storage**: Append-only writes are SQLite's sweet spot
+- **Projections**: Fast reads for materialized views
+- **Edge deployments**: Single-file databases that can be replicated
+- **Development**: No database server to install or manage
+
+## Native PostgreSQL with Bun.sql
+
+For production workloads that need the power of PostgreSQL, Bun provides `Bun.sql` - a high-performance PostgreSQL client:
+
+```typescript
+import { DB } from '@onepipe/sdk'
+
+const db = DB.create('main')
+  .postgres({
+    host: 'localhost',
+    database: 'myapp',
+    user: 'postgres',
+  })
+  .build()
+
+// Type-safe queries with connection pooling
+const orders = await db.query('SELECT * FROM orders WHERE status = $1', ['pending'])
+```
+
+Why PostgreSQL with Bun:
+- **Connection pooling**: Built-in pooling for high concurrency
+- **Prepared statements**: Automatic query caching for repeated queries
+- **Binary protocol**: Faster data transfer than text-based protocols
+- **JSONB support**: Perfect for storing event payloads and projections
+
+## Redis for High-Performance Caching
+
+OnePipe's Cache primitive leverages Redis for blazing-fast caching and pub/sub:
+
+```typescript
+import { Cache } from '@onepipe/sdk'
+
+const cache = Cache.create('app')
+  .redis({
+    host: 'localhost',
+    port: 6379,
+  })
+  .build()
+
+// Sub-millisecond reads
+await cache.set('user:123', userData, { ttl: 3600 })
+const user = await cache.get('user:123')
+
+// Atomic operations
+await cache.incr('page:views')
+```
+
+Redis excels at:
+- **Session storage**: Fast reads for authentication tokens
+- **Rate limiting**: Atomic counters for API throttling
+- **Pub/Sub**: Real-time event distribution across instances
+- **Leaderboards**: Sorted sets for rankings and analytics
+
+## Choosing the Right Database
+
+OnePipe's unified DB abstraction lets you choose the right tool for the job:
+
+| Use Case | Recommended | Why |
+|----------|-------------|-----|
+| Development | SQLite | Zero setup, single file |
+| Edge/Serverless | SQLite | No network latency |
+| Production API | PostgreSQL | ACID, scaling, features |
+| Caching layer | Redis | Sub-ms latency |
+| Event storage | PostgreSQL + Redis | Durability + speed |
+
+The best part? OnePipe's API stays the same regardless of backend:
+
+```typescript
+// Same API, different backends
+const devDb = DB.create('dev').sqlite(':memory:').build()
+const prodDb = DB.create('prod').postgres(process.env.DATABASE_URL).build()
+
+// Your application code doesn't change
+const api = REST.create('orders')
+  .db(process.env.NODE_ENV === 'production' ? prodDb : devDb)
+  .build()
+```
+
+## First-Class Fetch API
+
+Bun implements the full Fetch API natively, including `Request`, `Response`, and streaming:
+
+```typescript
+Bun.serve({
+  port: 3000,
+  fetch(req) {
+    return new Response('Hello World')
+  },
+})
+```
+
+This means OnePipe's REST API builder works exactly the same way in development as it does in production. No abstraction leaks, no surprises.
+
+## Hot Module Replacement
+
+Bun's built-in hot reloading is incredibly fast:
+
+```bash
+bun --hot run server.ts
+```
+
+Changes are reflected instantly without losing application state. This is crucial for the rapid iteration that modern development demands.
+
+## The Ecosystem is Ready
+
+Bun's Node.js compatibility is now mature enough that most npm packages just work:
+
+- Express middleware? Works.
+- Zod validation? Works.
+- Drizzle ORM? Works.
+- Most of npm? Works.
+
+You're not giving up the ecosystem - you're gaining a better runtime.
+
+## What About Production?
+
+We've been running OnePipe on Bun in production for months. Our experience:
+
+- **Stability**: Bun 1.0+ is production-ready
+- **Memory**: Lower memory usage than Node.js for equivalent workloads
+- **Observability**: Standard tools work (OpenTelemetry, Prometheus)
+- **Deployment**: Works everywhere - VMs, containers, serverless
+
+## The Trade-offs
+
+To be fair, there are some considerations:
+
+1. **Maturity**: Bun is newer than Node.js. Some edge cases may not be as well-tested.
+2. **Windows support**: Bun runs on Windows but some features are still catching up.
+3. **Team familiarity**: Your team may need time to learn Bun-specific patterns.
+
+For new projects, especially those using TypeScript and SQLite, these trade-offs are worth it.
+
+## Getting Started
+
+Install Bun if you haven't:
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+Then start with OnePipe:
+
+```bash
+bun add @onepipe/sdk @onepipe/runtime
+```
+
+Read our [quick start guide](/docs) to build your first stream-first API in under 5 minutes.
+
+---
+
+*The future of JavaScript runtimes is here, and it's fast.*

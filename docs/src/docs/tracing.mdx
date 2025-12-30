@@ -1,0 +1,248 @@
+# Distributed Tracing
+
+OpenTelemetry-compatible tracing for observability across your services.
+
+## Basic Usage
+
+```typescript
+import { initTracing, getTracer } from '@onepipe/sdk'
+
+// Initialize tracing (call once at startup)
+initTracing({
+  serviceName: 'my-service',
+  endpoint: 'http://jaeger:4318/v1/traces'
+})
+
+// Create spans manually
+const tracer = getTracer('my-service')
+await tracer.startActiveSpan('operation', async (span) => {
+  span.setAttribute('user.id', '123')
+  // ... do work
+  span.end()
+})
+```
+
+## Automatic Setup
+
+In development, the CLI automatically configures tracing to send to the dashboard:
+
+```bash
+onepipe dev --app ./src/index.ts
+# Traces automatically sent to dashboard at http://localhost:4000
+```
+
+## REST API Tracing
+
+Enable tracing on REST APIs with `.trace()`:
+
+```typescript
+import { REST } from '@onepipe/sdk'
+
+const api = REST.create('orders')
+  .trace()  // Enable automatic span creation
+  .get('/:id', async (ctx) => {
+    // This request creates a trace span automatically
+    return ctx.db.query('SELECT * FROM orders WHERE id = ?', [ctx.params.id])
+  })
+  .build()
+```
+
+## Creating Child Spans
+
+Use `withSpan` to create child spans:
+
+```typescript
+import { withSpan } from '@onepipe/sdk'
+
+async function processOrder(orderId: string) {
+  return withSpan('process.order', {
+    'order.id': orderId,
+    'order.type': 'standard'
+  }, async () => {
+    const order = await fetchOrder(orderId)
+
+    // Nested span
+    await withSpan('validate.order', {
+      'items.count': order.items.length
+    }, async () => {
+      await validateOrder(order)
+    })
+
+    return order
+  })
+}
+```
+
+## Traced HTTP Client
+
+Use the traced HTTP client to automatically create spans for external calls:
+
+```typescript
+import { http } from '@onepipe/sdk'
+
+const api = REST.create('checkout')
+  .trace()
+  .post('/checkout', async (ctx) => {
+    // This creates a child span under the request span
+    const payment = await http.post('https://payments.api/charge', {
+      amount: 100,
+      currency: 'USD'
+    })
+
+    return ctx.json({ success: true })
+  })
+  .build()
+```
+
+## Configuration Options
+
+```typescript
+initTracing({
+  // Service name (required)
+  serviceName: 'my-service',
+
+  // OTLP endpoint (optional, uses env var or localhost:4001)
+  endpoint: 'http://collector:4318/v1/traces',
+
+  // Use simple processor instead of batch (for testing)
+  useSimpleProcessor: false,
+
+  // Batch processor config
+  batch: {
+    maxExportBatchSize: 512,    // Max spans per batch
+    scheduledDelayMillis: 5000  // Max wait time before export
+  }
+})
+```
+
+## Environment Variables
+
+```bash
+# OTLP endpoint (used if not specified in initTracing)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+
+# Auto-configured by CLI in dev mode
+ONEPIPE_DASHBOARD_URL=http://localhost:4001
+```
+
+## Production Backends
+
+### Jaeger
+
+```typescript
+initTracing({
+  serviceName: 'my-service',
+  endpoint: 'http://jaeger:4318/v1/traces'
+})
+```
+
+### Zipkin
+
+```typescript
+initTracing({
+  serviceName: 'my-service',
+  endpoint: 'http://zipkin:9411/api/v2/spans'
+})
+```
+
+### Datadog
+
+```typescript
+initTracing({
+  serviceName: 'my-service',
+  endpoint: 'http://datadog-agent:4318/v1/traces'
+})
+```
+
+### Grafana Tempo
+
+```typescript
+initTracing({
+  serviceName: 'my-service',
+  endpoint: 'http://tempo:4318/v1/traces'
+})
+```
+
+## Lifecycle Methods
+
+```typescript
+import {
+  initTracing,
+  shutdownTracing,
+  flushTracing,
+  isTracingInitialized
+} from '@onepipe/sdk'
+
+// Check if tracing is initialized
+if (!isTracingInitialized()) {
+  initTracing({ serviceName: 'my-service' })
+}
+
+// Force flush pending spans
+await flushTracing()
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  await shutdownTracing()
+  process.exit(0)
+})
+```
+
+## Span Status
+
+```typescript
+import { SpanStatusCode } from '@onepipe/sdk'
+
+tracer.startActiveSpan('operation', async (span) => {
+  try {
+    await doWork()
+    span.setStatus({ code: SpanStatusCode.OK })
+  } catch (error) {
+    span.setStatus({
+      code: SpanStatusCode.ERROR,
+      message: error.message
+    })
+    throw error
+  } finally {
+    span.end()
+  }
+})
+```
+
+## Database Tracing
+
+Database operations are automatically traced when using `.trace()`:
+
+```typescript
+const db = DB.create('main')
+  .postgres(process.env.DATABASE_URL)
+  .trace()  // Enable query tracing
+  .build()
+
+const api = REST.create('users')
+  .db(db)
+  .trace()
+  .get('/', async (ctx) => {
+    // This query creates a child span with:
+    // - db.system: 'postgres'
+    // - db.statement: 'SELECT * FROM users'
+    return ctx.db.query('SELECT * FROM users')
+  })
+  .build()
+```
+
+## Cache Tracing
+
+Redis operations are automatically traced:
+
+```typescript
+const cache = Cache.create('main')
+  .redis(process.env.REDIS_URL)
+  .trace()
+  .build()
+
+// Cache operations create spans with:
+// - cache.operation: 'get' | 'set' | 'delete'
+// - cache.key: 'user:123'
+await cache.get('user:123')
+```

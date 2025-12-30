@@ -63,6 +63,40 @@ function validateConfig(config: OnePipeConfig): void {
     throw new Error('Config requires at least one environment')
   }
 
+  // Validate services if defined
+  if (config.services) {
+    const serviceNames = new Set<string>()
+    for (const service of config.services) {
+      // Validate required fields
+      if (!service.name) {
+        throw new Error('Service requires a name')
+      }
+      if (!service.entrypoint) {
+        throw new Error(`Service "${service.name}" requires an entrypoint`)
+      }
+
+      // Check for duplicate names
+      if (serviceNames.has(service.name)) {
+        throw new Error(`Duplicate service name: "${service.name}"`)
+      }
+      serviceNames.add(service.name)
+
+      // Validate port range
+      if (service.port !== undefined && (service.port < 1 || service.port > 65535)) {
+        throw new Error(`Service "${service.name}" has invalid port: ${service.port}`)
+      }
+
+      // Validate depends references
+      if (service.depends) {
+        for (const dep of service.depends) {
+          if (!config.services.some(s => s.name === dep)) {
+            throw new Error(`Service "${service.name}" depends on unknown service: "${dep}"`)
+          }
+        }
+      }
+    }
+  }
+
   for (const [envName, envConfig] of Object.entries(config.environments)) {
     if (!envConfig.streams) {
       throw new Error(`Environment "${envName}" requires streams configuration`)

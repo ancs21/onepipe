@@ -114,6 +114,31 @@ export class APIError extends Error {
   static resourceExhausted(message = 'Resource Exhausted', details?: unknown): APIError {
     return new APIError('ResourceExhausted', message, details)
   }
+
+  /**
+   * Create APIError from HTTP response status and body
+   */
+  static fromResponse(status: number, body?: { code?: string; message?: string; error?: string }): APIError {
+    const message = body?.message || body?.error || `HTTP ${status}`
+    const code = body?.code as APIErrorCode
+
+    // Map status to error code if not provided
+    if (code && Object.keys(ErrorCodeToHTTPStatus).includes(code)) {
+      return new APIError(code, message)
+    }
+
+    // Infer code from status
+    switch (status) {
+      case 400: return new APIError('InvalidArgument', message)
+      case 401: return new APIError('Unauthenticated', message)
+      case 403: return new APIError('PermissionDenied', message)
+      case 404: return new APIError('NotFound', message)
+      case 409: return new APIError('AlreadyExists', message)
+      case 429: return new APIError('ResourceExhausted', message)
+      case 503: return new APIError('Unavailable', message)
+      default: return new APIError('Internal', message)
+    }
+  }
 }
 
 // ============================================================================
@@ -287,7 +312,7 @@ export interface ProjectionOptions<TState, TEvent> {
 
 export interface SnapshotOptions {
   every?: number
-  storage?: 'sqlite' | 'memory'
+  storage?: 'sqlite' | 'memory' | 'postgresql'
   onStartup?: 'restore' | 'rebuild'
 }
 
@@ -340,8 +365,14 @@ export interface DBOptions {
 }
 
 export interface PoolOptions {
+  /** Minimum number of connections in the pool */
   min?: number
+  /** Maximum number of connections in the pool (default: 10) */
   max?: number
+  /** How long to keep idle connections in ms (default: 30000) */
+  idleTimeout?: number
+  /** How long to wait for a connection in ms (default: 30000) */
+  connectionTimeout?: number
 }
 
 export interface QueryOptions {
@@ -374,6 +405,41 @@ export interface DBInstance extends DBContext {
   getTables(): Promise<TableInfo[]>
   getTableSchema(tableName: string): Promise<ColumnInfo[]>
 }
+
+/**
+ * DB Instance with Drizzle ORM enabled
+ * Extends DBInstance with type-safe Drizzle query builder
+ */
+export interface DrizzleDBInstance<TSchema extends Record<string, unknown> = Record<string, unknown>> extends DBInstance {
+  /** Drizzle query builder with type-safe schema access */
+  readonly drizzle: DrizzleInstance<TSchema>
+}
+
+/**
+ * Drizzle query API interface
+ * Provides type-safe query builder methods
+ */
+export interface DrizzleQueryAPI {
+  /** Select from a table */
+  select<T extends Record<string, unknown>>(fields?: T): unknown
+  /** Insert into a table */
+  insert<T>(table: T): unknown
+  /** Update a table */
+  update<T>(table: T): unknown
+  /** Delete from a table */
+  delete<T>(table: T): unknown
+  /** Execute raw SQL */
+  execute<T = unknown>(sql: unknown): Promise<T>
+}
+
+/**
+ * Drizzle ORM instance type
+ * This is a placeholder that gets refined by the actual drizzle-orm types
+ */
+export type DrizzleInstance<TSchema extends Record<string, unknown> = Record<string, unknown>> = {
+  /** Schema tables for query builder */
+  readonly _schema: TSchema
+} & DrizzleQueryAPI
 
 // ============================================================================
 // Cache Types
@@ -611,8 +677,30 @@ export interface StorageInstance {
 // Config Types
 // ============================================================================
 
+/**
+ * Service definition for microservices deployment
+ */
+export interface ServiceDefinition {
+  /** Service name (used in Docker/K8s) */
+  name: string
+  /** Path to entrypoint file */
+  entrypoint: string
+  /** Port the service listens on (default: 3000) */
+  port?: number
+  /** Number of replicas (default: 1) */
+  replicas?: number
+  /** Base path for routing (e.g., "/api/users") */
+  basePath?: string
+  /** Other services this service depends on */
+  depends?: string[]
+  /** Whether this service is the public gateway */
+  gateway?: boolean
+}
+
 export interface OnePipeConfig {
   name: string
+  /** Microservices definitions */
+  services?: ServiceDefinition[]
   environments: Record<string, EnvironmentConfig>
   hooks?: DeployHooks
 }
@@ -927,3 +1015,18 @@ export type InferWorkflowOutput<T> = T extends WorkflowInstance<infer _I, infer 
  * Extract the output type from a CronInstance
  */
 export type InferCronOutput<T> = T extends CronInstance<infer O> ? O : never
+
+// ============================================================================
+// Lifecycle Types (re-export from lifecycle.ts)
+// ============================================================================
+
+export type {
+  HealthStatus,
+  HealthCheckResult,
+  HealthResponse,
+  ReadinessResponse,
+  HealthCheckFn,
+  ShutdownHook,
+  LifecycleOptions,
+  LifecycleInstance,
+} from './lifecycle'

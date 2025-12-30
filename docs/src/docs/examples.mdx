@@ -1,0 +1,94 @@
+# Examples
+
+## Todo App with Events
+
+```typescript
+import { REST, DB, Flow, Projection, Signal, Server, APIError } from '@onepipe/sdk'
+import { z } from 'zod'
+
+const TodoEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('created'), todoId: z.string(), title: z.string() }),
+  z.object({ type: z.literal('completed'), todoId: z.string() }),
+  z.object({ type: z.literal('deleted'), todoId: z.string() }),
+])
+
+const db = DB.create('main').sqlite(':memory:').build()
+const todoEvents = Flow.create('todo-events').schema(TodoEventSchema).build()
+
+const todoStats = Projection.create('todo-stats')
+  .from(todoEvents)
+  .initial({ total: 0, completed: 0 })
+  .reduce((state, event) => {
+    switch (event.type) {
+      case 'created': return { ...state, total: state.total + 1 }
+      case 'completed': return { ...state, completed: state.completed + 1 }
+      default: return state
+    }
+  })
+  .build()
+
+const api = REST.create('todos')
+  .basePath('/api/todos')
+  .db(db)
+  .post('/', async (ctx) => {
+    const { title } = ctx.body()
+    const id = crypto.randomUUID()
+    await ctx.db.query('INSERT INTO todos (id, title) VALUES (?, ?)', [id, title])
+    await todoEvents.append({ type: 'created', todoId: id, title })
+    return ctx.created({ id, title })
+  })
+  .build()
+
+Server.create().port(3001).use(api).db(db).start()
+```
+
+## Cached API
+
+```typescript
+import { REST, DB, Cache } from '@onepipe/sdk'
+
+const db = DB.create('main').postgres(process.env.DATABASE_URL).build()
+const cache = Cache.create('main').redis('redis://localhost:6379').build()
+
+const api = REST.create('products')
+  .basePath('/api/products')
+  .db(db)
+  .cache(cache)
+  .get('/popular', async (ctx) => {
+    const cached = await ctx.cache.get('popular')
+    if (cached) return cached
+
+    const products = await ctx.db.query('SELECT * FROM products ORDER BY sales DESC LIMIT 10')
+    await ctx.cache.set('popular', products, { ttl: 300 })
+    return products
+  })
+  .build()
+```
+
+## Background Jobs
+
+```typescript
+import { Channel } from '@onepipe/sdk'
+import { z } from 'zod'
+
+const processImage = Channel.create('process-image')
+  .input(z.object({ imageUrl: z.string(), operations: z.array(z.string()) }))
+  .output(z.object({ url: z.string() }))
+  .timeout('2m')
+  .retry({ attempts: 3 })
+  .handler(async (input) => {
+    const processed = await imageProcessor.process(input)
+    return { url: processed.url }
+  })
+  .build()
+```
+
+## Running Examples
+
+```bash
+# Run directly
+bun run examples/full-demo.ts
+
+# Or with CLI
+bunx @onepipe/cli dev --app examples/full-demo.ts
+```

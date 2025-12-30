@@ -1,0 +1,202 @@
+# Cache
+
+Caching with a clean API. TTL, counters, and more. Supports Redis or PostgreSQL.
+
+## The Problem
+
+Raw cache clients are verbose:
+
+```typescript
+import Redis from 'ioredis'
+const redis = new Redis()
+
+await redis.set('user:123', JSON.stringify(user))
+const raw = await redis.get('user:123')
+const user = raw ? JSON.parse(raw) : null
+```
+
+Manual serialization. No type safety. Connection handling is your problem.
+
+## The Solution
+
+```typescript
+// Option 1: Redis
+const cache = Cache.create('main')
+  .redis(process.env.REDIS_URL)
+  .build()
+
+// Option 2: PostgreSQL (no Redis needed!)
+const pgCache = await PGCache.create('main')
+  .db(database)
+  .build()
+
+await cache.set('user:123', user)  // auto-serialized
+const user = await cache.get('user:123')  // auto-parsed
+```
+
+## PostgreSQL Cache (Recommended)
+
+Use PostgreSQL as your cache. No Redis dependency needed.
+
+```typescript
+import { PGCache, DB } from '@onepipe/sdk'
+
+const db = DB.create('main')
+  .postgres(process.env.DATABASE_URL)
+  .build()
+
+const cache = await PGCache.create('main')
+  .db(db)
+  .prefix('app:')          // key namespace
+  .ttl(3600)               // default TTL (1 hour)
+  .cleanupInterval(60)     // cleanup expired entries every 60s
+  .build()
+```
+
+### Why PostgreSQL Cache?
+
+- **Simpler infrastructure** - One less service to manage
+- **UNLOGGED tables** - 2x faster writes (data lost on crash, fine for cache)
+- **PostgreSQL 18** - io_uring async I/O gives 3x faster disk access
+- **JSONB storage** - Efficient serialization with indexing
+
+## Basic Usage
+
+```typescript
+import { Cache } from '@onepipe/sdk'
+
+const cache = Cache.create('main')
+  .redis('redis://localhost:6379')
+  .build()
+
+await cache.set('user:123', { name: 'Alice' })
+const user = await cache.get('user:123')
+```
+
+## Configuration
+
+```typescript
+const cache = Cache.create('main')
+  .redis('redis://localhost:6379')
+  .prefix('myapp:')          // key namespace
+  .ttl(3600)                 // default TTL (1 hour)
+  .maxConnections(20)        // connection pool
+  .build()
+```
+
+## Basic Operations
+
+```typescript
+// Set with optional TTL
+await cache.set('key', value)
+await cache.set('key', value, { ttl: 300 })  // 5 minutes
+
+// Get
+const value = await cache.get('key')
+
+// Delete
+await cache.del('key')
+
+// Check existence
+const exists = await cache.exists('key')
+```
+
+## Counters
+
+```typescript
+await cache.incr('page:views')        // +1
+await cache.decr('inventory:stock')   // -1
+await cache.incr('downloads', 5)      // +5
+```
+
+## Hash Operations
+
+Store objects as Redis hashes:
+
+```typescript
+await cache.hset('user:123', 'name', 'Alice')
+await cache.hset('user:123', 'role', 'admin')
+
+const name = await cache.hget('user:123', 'name')
+const user = await cache.hgetall('user:123')
+// { name: 'Alice', role: 'admin' }
+```
+
+## Lists
+
+```typescript
+// Queue operations
+await cache.lpush('queue', job)      // add to front
+await cache.rpush('queue', job)      // add to back
+const job = await cache.lpop('queue') // remove from front
+
+// Get range
+const items = await cache.lrange('queue', 0, 9)  // first 10
+```
+
+## Sets
+
+```typescript
+await cache.sadd('tags', 'typescript')
+await cache.sadd('tags', 'javascript', 'react')
+
+const tags = await cache.smembers('tags')
+// ['typescript', 'javascript', 'react']
+```
+
+## Pub/Sub
+
+Real-time messaging between instances:
+
+```typescript
+// Subscribe
+cache.subscribe('notifications', (message) => {
+  console.log('Received:', message)
+})
+
+// Publish (from any instance)
+await cache.publish('notifications', { type: 'alert', text: 'Server restarting' })
+```
+
+## With REST API
+
+```typescript
+const api = REST.create('users')
+  .basePath('/api/users')
+  .cache(cache)
+  .get('/:id', async (ctx) => {
+    // Check cache first
+    const cached = await ctx.cache.get(`user:${ctx.params.id}`)
+    if (cached) return cached
+
+    // Fetch from database
+    const user = await fetchUser(ctx.params.id)
+    await ctx.cache.set(`user:${ctx.params.id}`, user, { ttl: 300 })
+    return user
+  })
+  .build()
+```
+
+## Tracing
+
+```typescript
+const cache = Cache.create('main')
+  .redis('redis://localhost:6379')
+  .trace()  // OpenTelemetry spans
+  .build()
+
+// All operations create spans with:
+// - cache.system: 'redis'
+// - cache.operation: 'get' | 'set' | 'del' | etc.
+// - cache.key: 'user:123'
+```
+
+## Tips
+
+**Use `.prefix()` to namespace keys** - Avoids collisions between apps.
+
+**Set appropriate TTLs** - Don't cache forever. Data goes stale.
+
+**Use hashes for objects** - More efficient than serializing to JSON.
+
+**Use pub/sub for real-time** - Cheaper than polling the database.

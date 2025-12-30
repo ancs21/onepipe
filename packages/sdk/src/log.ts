@@ -191,6 +191,54 @@ class StreamTransport implements LogTransport {
 }
 
 /**
+ * Dashboard transport - sends logs to OnePipe dashboard
+ */
+class DashboardTransport implements LogTransport {
+  private endpoint: string
+  private buffer: LogEntry[] = []
+  private flushTimer: ReturnType<typeof setInterval> | null = null
+
+  constructor(endpoint: string = 'http://localhost:4001') {
+    this.endpoint = endpoint
+    this.flushTimer = setInterval(() => this.flush(), 1000)
+  }
+
+  write(entry: LogEntry): void {
+    this.buffer.push(entry)
+    if (this.buffer.length >= 50) {
+      this.flush()
+    }
+  }
+
+  private async flush(): Promise<void> {
+    if (this.buffer.length === 0) return
+
+    const entries = this.buffer
+    this.buffer = []
+
+    for (const entry of entries) {
+      try {
+        await fetch(`${this.endpoint}/api/dashboard/logs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry),
+        })
+      } catch {
+        // Silent fail - dashboard may not be running
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer)
+      this.flushTimer = null
+    }
+    await this.flush()
+  }
+}
+
+/**
  * Log builder with fluent API
  */
 class LogBuilder {
@@ -241,6 +289,18 @@ class LogBuilder {
    */
   stream(endpoint: string): this {
     this.transports.push(new StreamTransport(endpoint))
+    return this
+  }
+
+  /**
+   * Send logs to OnePipe dashboard
+   */
+  dashboard(endpoint?: string): this {
+    this.transports.push(
+      new DashboardTransport(
+        endpoint || process.env.ONEPIPE_DASHBOARD_URL || 'http://localhost:4001'
+      )
+    )
     return this
   }
 

@@ -13,6 +13,13 @@
  * ```
  */
 
+// Import commands from commands module
+import { runMigrate } from './commands/migrate'
+import { runDB } from './commands/db'
+import { deployKubernetes } from './commands/deploy-k8s'
+import { deployCloudRun } from './commands/deploy-cloudrun'
+import { deployCompose } from './commands/deploy-compose'
+
 interface EnvironmentConfig {
   streams: string
   database?: string
@@ -305,11 +312,11 @@ Usage: onepipe <command> [options]
 Commands:
   dev                Start development server with dashboard
   deploy <env>       Deploy to environment (staging, production)
-  migrate <action>   Run database migrations (up, down, status)
+  migrate <action>   Database migrations (generate, up, status)
+  db <action>        Database utilities (seed, reset, studio)
   logs <env>         Stream logs from environment
   env <action>       Manage environments (list, status)
   flows <action>     Manage flows (list, read, write)
-  db <action>        Database utilities (seed, reset, console)
 
 Options:
   -h, --help         Show this help message
@@ -320,138 +327,277 @@ Dev Options:
   --app-port         App server port (default: 3001)
   --dashboard-port   Dashboard port (default: 4000)
   --no-dashboard     Disable dashboard
+  --no-watch         Disable hot reload (file watching)
 
 Deploy Options:
-  --target, -t       Target: docker (default), fly, standalone
+  --target, -t       Target: docker (default), fly, standalone, kubernetes, cloudrun
   --registry, -r     Docker registry (e.g., ghcr.io/username)
   --tag              Image tag (default: latest)
   --push             Push image to registry after build
   --force            Overwrite existing Dockerfile/fly.toml
+
+Kubernetes Options (--target kubernetes):
+  --replicas         Number of replicas (default: 2)
+  --cpu              CPU request (default: 250m)
+  --memory           Memory request (default: 256Mi)
+  --namespace, -n    Kubernetes namespace (default: default)
+  --output, -o       Output directory (default: ./k8s)
+  --dry-run          Print manifests to stdout
+
+Cloud Run Options (--target cloudrun):
+  --region           GCP region (default: us-central1)
+  --project          GCP project ID
+  --min-instances    Min instances (default: 0)
+  --max-instances    Max instances (default: 100)
+  --cpu              CPU limit (default: 1)
+  --memory           Memory limit (default: 512Mi)
+  --allow-unauthenticated  Allow public access
+  --generate-only    Only generate service.yaml
+
+Migrate Commands:
+  migrate generate [--name <n>]  Generate migrations from schema changes
+  migrate up                     Apply pending migrations to database
+  migrate status                 Show migration status
+
+DB Commands:
+  db seed [--file <path>]        Run seed files from ./seeds/
+  db reset --force               Drop all tables, re-run migrations
+  db studio                      Launch Drizzle Studio (visual database UI)
 
 Examples:
   onepipe dev --app ./src/server.ts       # Start dev with dashboard
   onepipe dev --no-dashboard              # Start without dashboard
   onepipe deploy production               # Docker build
   onepipe deploy production --target fly  # Deploy to Fly.io
-  onepipe migrate up                      # Run migrations
+  onepipe deploy production --target k8s --replicas 3  # Generate K8s manifests
+  onepipe deploy production --target cloudrun --region us-central1  # Deploy to Cloud Run
+  onepipe migrate generate                # Generate SQL from schema
+  onepipe migrate up                      # Apply migrations
+  onepipe db studio                       # Visual database browser
 `)
 }
 
 /**
  * Development server command
  *
- * Starts:
- * 1. Dashboard API server (port 4001)
- * 2. Dashboard frontend (Vite dev server, port 4000)
- * 3. User's app (port 3001)
+ * Two-phase startup with auto-discovery:
+ * 1. Detect entrypoint (from flag or package.json)
+ * 2. Static analysis to discover infrastructure needs
+ * 3. Provision only required infrastructure (PostgreSQL, Redis, etc.)
+ * 4. Start dashboard (if enabled)
+ * 5. Load user's app
  */
 async function runDev(args: string[]) {
+  const cwd = process.cwd()
+
+  // Import discovery and infrastructure modules
+  const { detectEntrypoint, validateEntrypoint, analyzeEntrypoint, getInfrastructureTypes } = await import('./discovery')
+  const { createInfrastructureManager } = await import('./infrastructure')
+  const { printHeader, printEntrypoint, printDiscovery, printProvisioning, printProvisionResult, printReady, printError } = await import('./ui')
+
   const appPort = getFlag(args, '--app-port') || '3001'
   const dashboardPort = getFlag(args, '--dashboard-port') || '4000'
   const dashboardApiPort = '4001'
   const noDashboard = args.includes('--no-dashboard')
-  const entrypoint = getFlag(args, '--app', '-a') || args.find(a => !a.startsWith('-')) || './src/index.ts'
+  const noWatch = args.includes('--no-watch')
+  const appFlag = getFlag(args, '--app', '-a') || args.find(a => !a.startsWith('-'))
 
-  // Find dashboard package path
-  const dashboardPath = await findDashboardPath()
+  // Print header
+  printHeader()
 
-  console.log(`
-┌─────────────────────────────────────────────────┐
-│                                                 │
-│   ⚡ OnePipe Development Server                 │
-│                                                 │
-└─────────────────────────────────────────────────┘
-`)
+  // Step 1: Detect entrypoint
+  const entrypointResult = await detectEntrypoint(cwd, appFlag)
+  printEntrypoint(entrypointResult.path, entrypointResult.source)
+
+  // Validate entrypoint exists
+  const validation = await validateEntrypoint(entrypointResult.path)
+  if (!validation.valid) {
+    printError('Entrypoint not found', `${entrypointResult.path}\nCreate a src/index.ts file or specify an entrypoint with --app`)
+    process.exit(1)
+  }
+
+  // Step 2: Static analysis to discover infrastructure needs
+  const discovery = await analyzeEntrypoint(entrypointResult.path)
+  printDiscovery(discovery)
+
+  // Step 3: Provision required infrastructure
+  const infrastructureTypes = getInfrastructureTypes(discovery)
+  if (infrastructureTypes.length > 0) {
+    printProvisioning(infrastructureTypes)
+    const manager = createInfrastructureManager()
+    const provisionResult = await manager.provision(infrastructureTypes)
+    printProvisionResult(provisionResult)
+
+    // Set environment variables
+    Object.assign(process.env, provisionResult.env)
+
+    if (provisionResult.errors.length > 0) {
+      for (const error of provisionResult.errors) {
+        printError(error)
+      }
+    }
+  }
 
   // Set development environment
   process.env.NODE_ENV = 'development'
   process.env.ONEPIPE_PORT = appPort
   process.env.APP_PORT = appPort
+
+  // Find dashboard package path
+  const dashboardPath = await findDashboardPath()
+
   // Enable trace reporting to dashboard via OTLP
   if (!noDashboard && dashboardPath) {
     process.env.ONEPIPE_DASHBOARD_URL = `http://localhost:${dashboardApiPort}`
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT = `http://localhost:${dashboardApiPort}/v1/traces`
   }
 
-  // Auto-start PostgreSQL for workflows/cron
-  const dbUrl = await ensurePostgres()
-  if (dbUrl) {
-    process.env.DATABASE_URL = dbUrl
-  }
-
-  // Check if entrypoint exists
-  const file = Bun.file(entrypoint)
-  if (!await file.exists()) {
-    console.error(`Error: Entrypoint not found: ${entrypoint}`)
-    console.error('Create a src/index.ts file or specify an entrypoint with --app')
-    process.exit(1)
-  }
-
   const processes: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = []
 
-  // Start Dashboard (if not disabled and path exists)
+  // Step 4: Start Dashboard (if not disabled and path exists)
   if (!noDashboard && dashboardPath) {
-    console.log(`  Dashboard:      http://localhost:${dashboardPort}`)
-    console.log(`  Dashboard API:  http://localhost:${dashboardApiPort}`)
-    console.log(`  Dashboard path: ${dashboardPath}`)
-    console.log('')
+    const { join } = await import('path')
+    const { existsSync } = await import('fs')
 
-    // Start Dashboard API server
+    // Start Dashboard API server (silent)
     const dashboardApiProc = Bun.spawn(['bun', 'run', 'server/standalone.ts'], {
       cwd: dashboardPath,
       env: { ...process.env, PORT: dashboardApiPort, APP_PORT: appPort },
-      stdout: 'inherit',
-      stderr: 'inherit',
+      stdout: 'pipe',
+      stderr: 'pipe',
     })
     processes.push({ name: 'dashboard-api', proc: dashboardApiProc })
 
-    // Start Dashboard frontend (Vite)
-    const dashboardFrontendProc = Bun.spawn(['bun', 'run', 'dev', '--port', dashboardPort], {
+    // Check if dashboard is built
+    const distPath = join(dashboardPath, 'dist')
+    const isBuilt = existsSync(distPath)
+
+    if (!isBuilt) {
+      // Build dashboard first
+      console.log('  Building dashboard...')
+      const buildProc = Bun.spawn(['bun', 'run', 'build'], {
+        cwd: dashboardPath,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await buildProc.exited
+    }
+
+    // Serve built dashboard with vite preview (silent)
+    const dashboardFrontendProc = Bun.spawn(['bun', 'run', 'preview', '--port', dashboardPort], {
       cwd: dashboardPath,
       env: { ...process.env },
-      stdout: 'inherit',
-      stderr: 'inherit',
+      stdout: 'pipe',
+      stderr: 'pipe',
     })
     processes.push({ name: 'dashboard-frontend', proc: dashboardFrontendProc })
-  } else if (!noDashboard) {
-    console.log('  Dashboard:      (not found, install @onepipe/dashboard)')
-    console.log('')
   }
 
-  // Start user's app
-  console.log(`  App:            http://localhost:${appPort}`)
-  console.log(`  Entrypoint:     ${entrypoint}`)
-  if (process.env.DATABASE_URL) {
-    const pgHost = process.env.DATABASE_URL.includes('localhost') ? 'localhost:5432' : 'container'
-    console.log(`  PostgreSQL:     ${pgHost}`)
-  }
-  console.log('')
+  // Step 5: Run the application with hot reload (bun --watch)
+  const bunArgs = noWatch
+    ? ['bun', 'run', entrypointResult.path]
+    : ['bun', '--watch', 'run', entrypointResult.path]
 
-  // Import and run the application
-  try {
-    await import(Bun.pathToFileURL(entrypoint).href)
+  const appProc = Bun.spawn(bunArgs, {
+    cwd: process.cwd(),
+    env: { ...process.env },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  processes.push({ name: 'app', proc: appProc })
 
-    console.log(`
-┌─────────────────────────────────────────────────┐
-│                                                 │
-│   ✓ Ready!                                      │
-│                                                 │
-│   Dashboard:  http://localhost:${dashboardPort.padEnd(19)}│
-│   App:        http://localhost:${appPort.padEnd(19)}│
-│                                                 │
-│   Press Ctrl+C to stop                          │
-│                                                 │
-└─────────────────────────────────────────────────┘
-`)
-  } catch (error) {
-    console.error('Failed to start development server:')
-    console.error(error)
-    // Cleanup processes
-    for (const { proc } of processes) {
-      proc.kill()
-    }
-    process.exit(1)
+  // Filter stderr (show errors, hide framework noise)
+  if (appProc.stderr) {
+    const stderrReader = appProc.stderr.getReader()
+    const stderrDecoder = new TextDecoder()
+    const { c, s } = await import('./ui')
+
+    ;(async () => {
+      while (true) {
+        const { done, value } = await stderrReader.read()
+        if (done) break
+        const text = stderrDecoder.decode(value)
+
+        for (const line of text.split('\n')) {
+          if (!line.trim()) continue
+
+          // Skip framework noise
+          if (
+            line.includes('[FileBackedStreamStore]') ||
+            line.includes('[OTEL]') ||
+            line.includes('Embedded streams server')
+          ) {
+            // Skip
+          }
+          // Show actual errors
+          else {
+            console.error(`${c.red}${s.cross}${c.reset} ${line}`)
+          }
+        }
+      }
+    })()
   }
+
+  // Stream and filter app output (show hot reload and errors only)
+  if (appProc.stdout) {
+    const reader = appProc.stdout.getReader()
+    const decoder = new TextDecoder()
+    const { ts, c, s } = await import('./ui')
+
+    ;(async () => {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const text = decoder.decode(value)
+
+        // Filter output - only show important messages
+        for (const line of text.split('\n')) {
+          if (!line.trim()) continue
+
+          // Skip noisy framework output
+          if (
+            line.includes('[OTEL]') ||
+            line.includes('[FileBackedStreamStore]') ||
+            line.includes('OnePipe Server') ||
+            line.includes('REST APIs:') ||
+            line.includes('Channels:') ||
+            line.includes('Flows:') ||
+            line.includes('Projections:') ||
+            line.includes('Signals:') ||
+            line.includes('Workflows:') ||
+            line.includes('Cron Jobs:') ||
+            line.includes('Databases:') ||
+            line.includes('registered') ||
+            line.includes('Embedded streams server') ||
+            line.includes('┌') ||
+            line.includes('│') ||
+            line.includes('└') ||
+            line.includes('─') ||
+            line.includes('http://0.0.0.0') ||
+            line.match(/^\s*(GET|POST|PUT|DELETE|PATCH)\s+/)
+          ) {
+            // Skip
+          }
+          // Show hot reload events with timestamp
+          else if (line.includes('[watch]') || line.includes('reloading')) {
+            console.log(ts(`${c.cyan}${s.arrow}${c.reset} ${line.replace('[watch]', '').trim()}`))
+          }
+          // Show actual errors (not framework noise)
+          else if (line.includes('error:') || line.includes('Error:') || line.includes('EADDRINUSE')) {
+            console.log(`${c.red}${s.cross}${c.reset} ${line}`)
+          }
+        }
+      }
+    })()
+  }
+
+  // Print ready message
+  printReady({
+    appPort: parseInt(appPort, 10),
+    dashboardPort: !noDashboard && dashboardPath ? parseInt(dashboardPort, 10) : undefined,
+    dashboardApiPort: !noDashboard && dashboardPath ? parseInt(dashboardApiPort, 10) : undefined,
+    streamsPort: 9999, // Embedded streams server
+  })
 
   // Handle cleanup on exit
   process.on('SIGINT', () => {
@@ -553,9 +699,41 @@ async function runDeploy(args: string[]) {
     case 'standalone':
       await deployStandalone(config)
       break
+    case 'kubernetes':
+    case 'k8s':
+      await deployKubernetes(
+        {
+          name: config.name,
+          port: config.deploy?.port,
+          entrypoint: config.deploy?.entrypoint,
+        },
+        args.slice(1) // Pass remaining args for K8s options
+      )
+      break
+    case 'cloudrun':
+    case 'cloud-run':
+      await deployCloudRun(
+        {
+          name: config.name,
+          port: config.deploy?.port,
+          entrypoint: config.deploy?.entrypoint,
+        },
+        args.slice(1) // Pass remaining args for Cloud Run options
+      )
+      break
+    case 'compose':
+    case 'docker-compose':
+      await deployCompose(
+        {
+          name: config.name,
+          entrypoint: config.deploy?.entrypoint,
+        },
+        args.slice(1) // Pass remaining args for compose options
+      )
+      break
     default:
       console.error(`Unknown target: ${target}`)
-      console.error('Available: docker, fly, standalone')
+      console.error('Available: docker, fly, standalone, kubernetes, cloudrun, compose')
       process.exit(1)
   }
 
@@ -779,33 +957,6 @@ async function deployStandalone(config: OnePipeConfig) {
 `)
 }
 
-/**
- * Migrate command
- */
-async function runMigrate(args: string[]) {
-  const action = args[0]
-
-  switch (action) {
-    case 'up':
-      console.log('Running pending migrations...')
-      // TODO: Implement migration up
-      break
-
-    case 'down':
-      console.log('Rolling back last migration...')
-      // TODO: Implement migration down
-      break
-
-    case 'status':
-      console.log('Migration status:')
-      // TODO: Implement migration status
-      break
-
-    default:
-      console.error('Usage: onepipe migrate <up|down|status>')
-      process.exit(1)
-  }
-}
 
 /**
  * Logs command
@@ -943,33 +1094,6 @@ async function runFlows(args: string[]) {
   }
 }
 
-/**
- * Database command
- */
-async function runDB(args: string[]) {
-  const action = args[0]
-
-  switch (action) {
-    case 'seed':
-      console.log('Running database seeds...')
-      // TODO: Implement seeding
-      break
-
-    case 'reset':
-      console.log('Resetting database...')
-      // TODO: Implement reset
-      break
-
-    case 'console':
-      console.log('Starting database console...')
-      // TODO: Implement console
-      break
-
-    default:
-      console.error('Usage: onepipe db <seed|reset|console>')
-      process.exit(1)
-  }
-}
 
 /**
  * Helper: Get flag value from args

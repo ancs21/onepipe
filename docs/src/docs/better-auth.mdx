@@ -1,0 +1,292 @@
+# Better Auth Integration
+
+Full-featured authentication with [better-auth](https://better-auth.com). Email/password, OAuth, sessions, and more.
+
+## Why better-auth?
+
+- **Complete solution** — Email/password, OAuth (Google, GitHub, etc.), magic links
+- **Session management** — Secure cookies, token refresh, device tracking
+- **Built for TypeScript** — Type-safe from database to client
+- **Database agnostic** — Works with PostgreSQL, MySQL, SQLite
+
+## Installation
+
+```bash
+bun add better-auth
+```
+
+## Setup
+
+### 1. Create the auth instance
+
+```typescript
+// src/auth.ts
+import { betterAuth } from 'better-auth'
+import { Auth } from '@onepipe/sdk'
+
+export const betterAuthInstance = betterAuth({
+  database: {
+    type: 'postgres',
+    url: process.env.DATABASE_URL,
+  },
+  emailAndPassword: {
+    enabled: true,
+  },
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+  },
+})
+
+// Wrap with OnePipe Auth
+export const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .mapUser((user) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+  }))
+  .build()
+```
+
+### 2. Create auth routes
+
+```typescript
+// src/auth-routes.ts
+import { REST } from '@onepipe/sdk'
+import { betterAuthInstance } from './auth'
+
+export const authApi = REST.create('auth')
+  .basePath('/auth')
+  .get('/*', async (ctx) => {
+    return betterAuthInstance.handler(ctx.request)
+  })
+  .post('/*', async (ctx) => {
+    return betterAuthInstance.handler(ctx.request)
+  })
+  .build()
+```
+
+### 3. Protect your API
+
+```typescript
+// src/api.ts
+import { REST } from '@onepipe/sdk'
+import { auth } from './auth'
+
+export const api = REST.create('api')
+  .basePath('/api')
+  .auth(auth)
+  .get('/me', async (ctx) => {
+    return { user: ctx.user }
+  })
+  .get('/settings', async (ctx) => {
+    return ctx.db.query(
+      'SELECT * FROM user_settings WHERE user_id = ?',
+      [ctx.user.id]
+    )
+  })
+  .build()
+```
+
+### 4. Start the server
+
+```typescript
+// src/server.ts
+import { serve } from '@onepipe/runtime'
+import { authApi } from './auth-routes'
+import { api } from './api'
+
+serve({
+  port: 3000,
+  rest: [authApi, api],
+})
+```
+
+## Auth Endpoints
+
+better-auth provides these endpoints automatically:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/sign-up/email` | POST | Register with email/password |
+| `/auth/sign-in/email` | POST | Login with email/password |
+| `/auth/sign-out` | POST | Logout |
+| `/auth/session` | GET | Get current session |
+| `/auth/sign-in/social` | GET | Start OAuth flow |
+| `/auth/callback/:provider` | GET | OAuth callback |
+
+## Client Usage
+
+### React
+
+```typescript
+import { createAuthClient } from 'better-auth/react'
+
+const authClient = createAuthClient({
+  baseURL: 'http://localhost:3000',
+})
+
+function LoginButton() {
+  const { signIn, signOut, session } = authClient.useSession()
+
+  if (session) {
+    return (
+      <div>
+        <p>Welcome, {session.user.name}</p>
+        <button onClick={() => signOut()}>Sign Out</button>
+      </div>
+    )
+  }
+
+  return (
+    <button onClick={() => signIn.email({ email, password })}>
+      Sign In
+    </button>
+  )
+}
+```
+
+### Fetch
+
+```typescript
+// Sign up
+await fetch('/auth/sign-up/email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password, name }),
+})
+
+// Sign in
+await fetch('/auth/sign-in/email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+  credentials: 'include',  // important for cookies
+})
+
+// Get session
+const res = await fetch('/auth/session', {
+  credentials: 'include',
+})
+const { user } = await res.json()
+```
+
+## OAuth Setup
+
+### Google
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create OAuth 2.0 credentials
+3. Add `http://localhost:3000/auth/callback/google` to authorized redirects
+4. Set environment variables:
+
+```bash
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+### GitHub
+
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Create a new OAuth App
+3. Set callback URL to `http://localhost:3000/auth/callback/github`
+4. Set environment variables:
+
+```bash
+GITHUB_CLIENT_ID=your-client-id
+GITHUB_CLIENT_SECRET=your-client-secret
+```
+
+## Database Schema
+
+better-auth creates these tables automatically:
+
+```sql
+-- Users
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  image TEXT,
+  email_verified INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Sessions
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  token TEXT UNIQUE NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT
+);
+
+-- Accounts (OAuth)
+CREATE TABLE accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(id),
+  provider TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL,
+  access_token TEXT,
+  refresh_token TEXT
+);
+```
+
+## Advanced Configuration
+
+```typescript
+const betterAuthInstance = betterAuth({
+  database: {
+    type: 'postgres',
+    url: process.env.DATABASE_URL,
+  },
+
+  // Session settings
+  session: {
+    expiresIn: 60 * 60 * 24 * 7,  // 7 days
+    updateAge: 60 * 60 * 24,      // refresh after 1 day
+  },
+
+  // Email verification
+  emailVerification: {
+    sendVerificationEmail: async ({ user, token }) => {
+      await sendEmail({
+        to: user.email,
+        subject: 'Verify your email',
+        html: `<a href="https://app.com/verify?token=${token}">Verify</a>`,
+      })
+    },
+  },
+
+  // Password reset
+  emailAndPassword: {
+    enabled: true,
+    sendResetPassword: async ({ user, token }) => {
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset your password',
+        html: `<a href="https://app.com/reset?token=${token}">Reset</a>`,
+      })
+    },
+  },
+})
+```
+
+## Tips
+
+**Use PostgreSQL in production** — SQLite works for dev, but PostgreSQL is better for sessions at scale.
+
+**Set secure cookies in production** — better-auth does this automatically when `NODE_ENV=production`.
+
+**Map user to what you need** — Use `.mapUser()` to control what's exposed in `ctx.user`.
+
+**Handle OAuth errors** — Users might cancel or deny permissions. Handle gracefully.

@@ -1,0 +1,221 @@
+# Workflow - Durable Execution
+
+Multi-step processes that don't lose progress when things crash.
+
+## The Problem
+
+You're building an order flow:
+
+```typescript
+async function processOrder(order) {
+  await validateOrder(order)
+  await chargeCard(order)
+  await sendConfirmation(order)
+  await updateInventory(order)
+}
+```
+
+What happens if your server crashes after charging the card but before sending confirmation? The customer is charged, but no email. You restart, and... you've lost track of where you were.
+
+## The Solution
+
+```typescript
+const processOrder = Workflow.create('process-order')
+  .db(postgres)
+  .define(async (ctx, order) => {
+    await ctx.step('validate', () => validateOrder(order))
+    await ctx.step('charge', () => chargeCard(order))      // crash here?
+    await ctx.step('confirm', () => sendConfirmation(order)) // resumes here
+    await ctx.step('inventory', () => updateInventory(order))
+  })
+  .build()
+```
+
+Each `ctx.step()` saves its result to the database. If you crash and restart, the workflow picks up where it left off.
+
+## Basic Usage
+
+```typescript
+import { Workflow, DB } from '@onepipe/sdk'
+
+const postgres = DB.create('main').postgres(process.env.DATABASE_URL).build()
+
+const onboarding = Workflow.create('user-onboarding')
+  .db(postgres)
+  .define(async (ctx, userId: string) => {
+    // Each step is checkpointed
+    await ctx.step('welcome-email', () => sendWelcomeEmail(userId))
+    await ctx.step('create-workspace', () => createWorkspace(userId))
+
+    // Sleep for real - survives restart
+    await ctx.sleep('24h')
+
+    await ctx.step('tips-email', () => sendTipsEmail(userId))
+
+    // Wait for external signal
+    const feedback = await ctx.signal('user-feedback', { timeout: '7d' })
+
+    if (feedback?.rating > 4) {
+      await ctx.step('review-request', () => askForReview(userId))
+    }
+
+    return { completed: true }
+  })
+  .build()
+
+// Start
+const handle = await onboarding.start('user-123')
+
+// Check status
+console.log(await handle.status())  // 'running' | 'completed' | 'failed'
+
+// Wait for result
+const result = await handle.result()
+```
+
+## What ctx Gives You
+
+```typescript
+.define(async (ctx, input) => {
+  // Run code with checkpoint
+  const result = await ctx.step('name', async () => {
+    return await doSomething()
+  })
+
+  // Sleep (durable - survives restart)
+  await ctx.sleep('5m')
+  await ctx.sleep(1000 * 60 * 5)  // ms also works
+
+  // Wait for external signal
+  const data = await ctx.signal('signal-name', { timeout: '24h' })
+
+  // Run child workflow
+  const childResult = await ctx.child(otherWorkflow, childInput)
+
+  // Metadata
+  ctx.workflowId    // unique ID
+  ctx.workflowName  // 'user-onboarding'
+})
+```
+
+## Step Execution
+
+Steps run at most once (if they complete). If your process crashes mid-step, the step runs again on recovery. Design for this.
+
+```
+ctx.step called
+    ↓
+Already in DB? ──Yes──▶ Return cached result
+    │
+    No
+    ↓
+Execute function
+    ↓
+Save to DB
+    ↓
+Return result
+```
+
+## Sending Signals
+
+Signals let external code communicate with running workflows:
+
+```typescript
+// In workflow - wait for approval
+const approved = await ctx.signal('manager-approval', { timeout: '48h' })
+if (!approved) throw new Error('Approval timeout')
+
+// External code - send signal
+await onboarding.signal(workflowId, 'manager-approval', { approved: true })
+```
+
+## Recovery
+
+Call `recover()` on startup to resume stuck workflows:
+
+```typescript
+// In your app startup
+await processOrder.recover()
+await onboarding.recover()
+```
+
+This finds workflows where:
+- `status = 'running'`
+- `updated_at` is stale (> 30 seconds old)
+
+And resumes them from their last completed step.
+
+## Managing Workflows
+
+```typescript
+// Start with custom ID
+const handle = await workflow.start(input, {
+  workflowId: 'order-123'  // your ID
+})
+
+// Get handle for existing workflow
+const handle = workflow.handle('order-123')
+
+// Status
+await handle.status()
+// { status: 'running', input: {...}, createdAt: Date }
+
+// Wait for completion
+const result = await handle.result()
+
+// Cancel
+await handle.cancel()
+
+// List workflows
+const running = await workflow.list({ status: 'running', limit: 10 })
+```
+
+## Example: Order Processing
+
+```typescript
+const processOrder = Workflow.create('process-order')
+  .db(postgres)
+  .define(async (ctx, order) => {
+    // Validate
+    const validated = await ctx.step('validate', async () => {
+      if (!order.items.length) throw new Error('Empty order')
+      return order
+    })
+
+    // Charge with idempotency key
+    const payment = await ctx.step('charge', async () => {
+      return await stripe.charges.create({
+        amount: validated.total,
+        idempotencyKey: ctx.workflowId + '-charge'  // safe to retry
+      })
+    })
+
+    // Wait for fulfillment
+    await ctx.sleep('2h')
+
+    // Ship
+    const tracking = await ctx.step('ship', async () => {
+      return await fulfillment.createShipment(validated)
+    })
+
+    // Notify customer
+    await ctx.step('notify', async () => {
+      await email.send(validated.email, 'shipped', { tracking })
+    })
+
+    return { orderId: order.id, tracking }
+  })
+  .build()
+```
+
+## Tips
+
+**Call `recover()` on startup** - Otherwise crashed workflows stay stuck.
+
+**Make steps idempotent** - Use idempotency keys for payments, upserts instead of inserts.
+
+**Keep steps small** - Easier to debug, better checkpoint granularity.
+
+**Use signals for human approval** - Don't poll external APIs in a loop.
+
+**Set timeouts on signals** - Otherwise workflows wait forever.

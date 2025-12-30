@@ -1,0 +1,291 @@
+# Configuration
+
+Type-safe configuration management for multi-environment deployments.
+
+## Basic Usage
+
+Create `onepipe.config.ts` in your project root:
+
+```typescript
+import { defineConfig } from '@onepipe/sdk'
+
+export default defineConfig({
+  name: 'my-app',
+
+  environments: {
+    local: {
+      streams: 'embedded',
+      database: 'sqlite:./local.db',
+    },
+    staging: {
+      streams: 'https://streams.staging.example.com',
+      database: process.env.STAGING_DATABASE_URL,
+      redis: process.env.STAGING_REDIS_URL,
+    },
+    production: {
+      streams: 'https://streams.example.com',
+      database: process.env.DATABASE_URL,
+      redis: process.env.REDIS_URL,
+      replicas: 3,
+    },
+  },
+})
+```
+
+## Environment Configuration
+
+Each environment requires a `streams` setting:
+
+```typescript
+environments: {
+  development: {
+    // Embedded streams server (for local development)
+    streams: 'embedded',
+
+    // SQLite database
+    database: 'sqlite:./dev.db',
+  },
+
+  production: {
+    // Remote streams server
+    streams: 'https://streams.example.com',
+
+    // PostgreSQL database
+    database: 'postgres://user:pass@host:5432/db',
+
+    // Redis cache
+    redis: 'redis://localhost:6379',
+
+    // Number of replicas for deployment
+    replicas: 3,
+  },
+}
+```
+
+## Deploy Hooks
+
+Run custom code before and after deployments:
+
+```typescript
+export default defineConfig({
+  name: 'my-app',
+  environments: { ... },
+
+  hooks: {
+    preDeploy: async (env) => {
+      console.log(`Deploying to ${env}`)
+      await runTests()
+      await buildAssets()
+    },
+
+    postDeploy: async (env) => {
+      console.log(`Deployed to ${env}`)
+      await notifySlack(`Deployed to ${env}`)
+      await invalidateCache()
+    },
+  },
+})
+```
+
+## Deploy Configuration
+
+Customize build and deployment settings:
+
+```typescript
+export default defineConfig({
+  name: 'my-app',
+  environments: { ... },
+
+  deploy: {
+    // Entry point (default: ./src/index.ts)
+    entrypoint: './src/server.ts',
+
+    // Server port (default: 3000)
+    port: 8080,
+
+    // Custom Dockerfile (skip generation)
+    dockerfile: './Dockerfile.custom',
+  },
+})
+```
+
+## Programmatic Configuration
+
+Use the ConfigBuilder for dynamic configuration:
+
+```typescript
+import { Config } from '@onepipe/sdk'
+
+const config = Config.create()
+  .name('my-app')
+  .local({
+    database: 'sqlite:./dev.db',
+  })
+  .environment('staging', {
+    streams: 'https://streams.staging.example.com',
+    database: process.env.STAGING_DB,
+  })
+  .environment('production', {
+    streams: 'https://streams.example.com',
+    database: process.env.DATABASE_URL,
+    replicas: 3,
+  })
+  .hooks({
+    preDeploy: async (env) => console.log(`Deploying to ${env}`),
+  })
+  .build()
+```
+
+## Loading Configuration
+
+```typescript
+import { loadConfig, getEnvironmentConfig } from '@onepipe/sdk'
+
+// Load from file
+const config = await loadConfig()
+// or specify path
+const config = await loadConfig('./config/onepipe.ts')
+
+// Get current environment config
+const env = getEnvironmentConfig(config)
+// Uses: ONEPIPE_ENV || NODE_ENV || 'local'
+
+console.log(env.name)      // 'production'
+console.log(env.streams)   // 'https://streams.example.com'
+console.log(env.database)  // 'postgres://...'
+```
+
+## Environment Selection
+
+The environment is determined by (in order):
+
+1. `ONEPIPE_ENV` environment variable
+2. `NODE_ENV` environment variable
+3. `'local'` (default)
+
+```bash
+# Use staging environment
+ONEPIPE_ENV=staging onepipe dev
+
+# Use production environment
+NODE_ENV=production bun run start
+```
+
+## Validation
+
+Configuration is validated automatically:
+
+```typescript
+// These will throw errors:
+
+// Missing required name
+defineConfig({
+  environments: { local: { streams: 'embedded' } }
+})
+// Error: Config requires a name
+
+// No environments
+defineConfig({
+  name: 'my-app',
+  environments: {}
+})
+// Error: Config requires at least one environment
+
+// Invalid streams URL
+defineConfig({
+  name: 'my-app',
+  environments: {
+    prod: { streams: 'not-a-url' }  // Not 'embedded' or valid URL
+  }
+})
+// Error: Invalid streams URL in environment "prod"
+```
+
+## Example: Full Configuration
+
+```typescript
+import { defineConfig } from '@onepipe/sdk'
+
+export default defineConfig({
+  name: 'my-ecommerce-app',
+
+  environments: {
+    local: {
+      streams: 'embedded',
+      database: 'sqlite:./dev.db',
+    },
+
+    development: {
+      streams: 'embedded',
+      database: process.env.DEV_DATABASE_URL || 'postgres://localhost:5432/dev',
+      redis: 'redis://localhost:6379',
+    },
+
+    staging: {
+      streams: 'https://streams.staging.myapp.com',
+      database: process.env.STAGING_DATABASE_URL,
+      redis: process.env.STAGING_REDIS_URL,
+      replicas: 2,
+    },
+
+    production: {
+      streams: 'https://streams.myapp.com',
+      database: process.env.DATABASE_URL,
+      redis: process.env.REDIS_URL,
+      replicas: 5,
+    },
+  },
+
+  deploy: {
+    entrypoint: './src/index.ts',
+    port: 3000,
+  },
+
+  hooks: {
+    preDeploy: async (env) => {
+      if (env === 'production') {
+        // Run extra checks for production
+        await runIntegrationTests()
+      }
+    },
+
+    postDeploy: async (env) => {
+      await fetch('https://slack.webhook/...', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: `Deployed ${env} successfully`
+        })
+      })
+    },
+  },
+})
+```
+
+## TypeScript Types
+
+```typescript
+interface OnePipeConfig {
+  name: string
+  environments: Record<string, EnvironmentConfig>
+  deploy?: DeployConfig
+  hooks?: DeployHooks
+}
+
+interface EnvironmentConfig {
+  streams: 'embedded' | string  // URL
+  database?: string
+  redis?: string
+  replicas?: number
+}
+
+interface DeployConfig {
+  entrypoint?: string
+  port?: number
+  dockerfile?: string
+}
+
+interface DeployHooks {
+  preDeploy?: (env: string) => Promise<void>
+  postDeploy?: (env: string) => Promise<void>
+}
+```

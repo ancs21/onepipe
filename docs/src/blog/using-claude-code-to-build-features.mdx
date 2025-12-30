@@ -1,0 +1,292 @@
+AI-assisted development is transforming how we build software. In this post, we'll show how to use Claude Code to rapidly implement features with OnePipe - from idea to working code in minutes.
+
+## What is Claude Code?
+
+Claude Code is Anthropic's official CLI tool that brings Claude directly into your terminal. It can read your codebase, understand context, write code, run tests, and even commit changes - all through natural language conversation.
+
+```bash
+# Install Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# Start a session in your project
+claude
+```
+
+## Why Claude Code + OnePipe?
+
+OnePipe's fluent builder API is ideal for AI-assisted development:
+
+- **Consistent patterns** - Claude learns the `.create().build()` pattern once
+- **Type-safe** - TypeScript catches errors before runtime
+- **Composable** - Small primitives combine into complex features
+- **Well-documented** - Clear API makes prompts more effective
+
+## Example: Building a Real-Time Dashboard
+
+Let's walk through building a complete analytics dashboard using Claude Code.
+
+### Step 1: Describe the Feature
+
+Start by telling Claude what you want to build:
+
+```
+You: I need a real-time analytics dashboard for tracking page views.
+It should:
+- Record page view events with URL, timestamp, and user agent
+- Show total views, unique visitors, and top pages
+- Stream updates in real-time via SSE
+- Use OnePipe primitives (Flow, Projection, REST)
+```
+
+### Step 2: Claude Generates the Code
+
+Claude Code reads your existing codebase, understands the OnePipe patterns, and generates:
+
+```typescript
+import { Flow, Projection, REST, DB } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+// Event schema for page views
+const pageViewFlow = Flow.create('page-views')
+  .schema({
+    url: 'string',
+    timestamp: 'number',
+    userAgent: 'string',
+    sessionId: 'string',
+  })
+  .build()
+
+// Projection: Aggregate stats
+const analyticsStats = Projection.create('analytics-stats')
+  .from(pageViewFlow)
+  .initial({
+    totalViews: 0,
+    uniqueVisitors: new Set<string>(),
+    pageViews: {} as Record<string, number>,
+  })
+  .reduce((state, event) => ({
+    totalViews: state.totalViews + 1,
+    uniqueVisitors: state.uniqueVisitors.add(event.sessionId),
+    pageViews: {
+      ...state.pageViews,
+      [event.url]: (state.pageViews[event.url] || 0) + 1,
+    },
+  }))
+  .build()
+
+// REST API
+const api = REST.create('analytics')
+  .basePath('/api/analytics')
+  .post('/track', async (ctx) => {
+    const { url, sessionId } = ctx.body()
+    await pageViewFlow.append({
+      url,
+      sessionId,
+      timestamp: Date.now(),
+      userAgent: ctx.headers['user-agent'] || 'unknown',
+    })
+    return ctx.json({ tracked: true })
+  })
+  .get('/stats', async () => {
+    const stats = await analyticsStats.get()
+    return {
+      totalViews: stats.totalViews,
+      uniqueVisitors: stats.uniqueVisitors.size,
+      topPages: Object.entries(stats.pageViews)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10),
+    }
+  })
+  .get('/stream', () => pageViewFlow.stream())
+  .build()
+
+serve({ port: 3000, rest: [api], flows: [pageViewFlow] })
+```
+
+### Step 3: Iterate with Claude
+
+Ask Claude to enhance the feature:
+
+```
+You: Add rate limiting to the /track endpoint - max 100 requests
+per minute per session. Use OnePipe's Cache primitive.
+```
+
+Claude adds:
+
+```typescript
+import { Cache } from '@onepipe/sdk'
+
+const cache = Cache.create('rate-limit').redis({ host: 'localhost' }).build()
+
+// Updated endpoint with rate limiting
+.post('/track', async (ctx) => {
+  const { url, sessionId } = ctx.body()
+
+  // Rate limiting
+  const key = `ratelimit:${sessionId}`
+  const count = await cache.incr(key)
+  if (count === 1) {
+    await cache.expire(key, 60) // 1 minute window
+  }
+  if (count > 100) {
+    return ctx.json({ error: 'Rate limit exceeded' }, 429)
+  }
+
+  await pageViewFlow.append({
+    url,
+    sessionId,
+    timestamp: Date.now(),
+    userAgent: ctx.headers['user-agent'] || 'unknown',
+  })
+  return ctx.json({ tracked: true })
+})
+```
+
+## Effective Prompts for OnePipe Development
+
+Here are prompts that work well with Claude Code:
+
+### Creating New Primitives
+
+```
+Create a OnePipe Flow for [domain] events with fields: [list fields].
+Add a Projection that calculates [aggregation].
+Build a REST API with endpoints for [operations].
+```
+
+### Adding Features
+
+```
+Add authentication to this REST API using OnePipe Auth.
+Implement caching for the /users endpoint with 5 minute TTL.
+Add SSE streaming for real-time [entity] updates.
+```
+
+### Refactoring
+
+```
+Refactor this Express route to use OnePipe REST builder.
+Convert this polling endpoint to use Flow streaming.
+Add event sourcing to this CRUD operation.
+```
+
+### Testing
+
+```
+Write tests for this Flow projection using Bun test.
+Add integration tests for the REST API endpoints.
+Test the event replay functionality.
+```
+
+## Real-World Workflow
+
+Here's how we use Claude Code daily with OnePipe:
+
+### 1. Scaffold New Features
+
+```
+You: Create a new feature for user notifications. I need:
+- A Flow for notification events (created, read, dismissed)
+- A Projection for unread count per user
+- REST endpoints to list, mark read, and dismiss
+- SSE endpoint for real-time notification updates
+```
+
+### 2. Debug Issues
+
+```
+You: The projection state seems wrong after replaying events.
+Here's the current code: [paste code]
+The events are: [paste sample events]
+Expected state: [describe expected]
+Actual state: [describe actual]
+```
+
+### 3. Optimize Performance
+
+```
+You: This endpoint is slow when there are many events.
+Can you add pagination and caching? Current code: [paste]
+```
+
+### 4. Write Documentation
+
+```
+You: Generate API documentation for this REST builder
+including request/response examples for each endpoint.
+```
+
+## Tips for Better Results
+
+### Provide Context
+
+```
+You: I'm building an e-commerce platform with OnePipe.
+The existing entities are: Users, Products, Orders.
+Now I need to add a Reviews feature...
+```
+
+### Be Specific About Patterns
+
+```
+You: Use the same error handling pattern as the orders API.
+Follow the existing naming conventions in src/api/.
+Match the test style in tests/flows.test.ts.
+```
+
+### Iterate Incrementally
+
+Don't ask for everything at once:
+
+```
+You: First, create the basic Flow and Projection.
+[review output]
+You: Good, now add the REST endpoints.
+[review output]
+You: Add caching for the stats endpoint.
+```
+
+### Let Claude Run Tests
+
+```
+You: Run the tests and fix any failures.
+```
+
+Claude Code can execute `bun test`, see failures, and fix them automatically.
+
+## The Productivity Multiplier
+
+Combining Claude Code with OnePipe's declarative primitives creates a powerful workflow:
+
+| Task | Traditional | With Claude Code |
+|------|-------------|------------------|
+| New CRUD API | 30-60 min | 2-5 min |
+| Add event sourcing | 2-4 hours | 10-15 min |
+| Implement caching | 30-60 min | 5 min |
+| Write tests | 1-2 hours | 10-20 min |
+| Debug projection | 30-60 min | 5-10 min |
+
+The key is that OnePipe's consistent patterns make it easy for Claude to generate correct code on the first try.
+
+## Getting Started
+
+1. Install Claude Code: `npm install -g @anthropic-ai/claude-code`
+2. Install OnePipe: `bun add @onepipe/sdk @onepipe/runtime`
+3. Start coding: `claude`
+
+Try this first prompt:
+
+```
+Create a simple todo API using OnePipe with:
+- A Flow for todo events (created, completed, deleted)
+- A Projection for the current todo list
+- REST endpoints for CRUD operations
+- Use SQLite for persistence
+```
+
+Watch as Claude generates a complete, working implementation in seconds.
+
+---
+
+*The future of development is collaborative - humans and AI building together. OnePipe's clean API makes that collaboration seamless.*

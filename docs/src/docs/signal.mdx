@@ -1,0 +1,196 @@
+# Signal - Reactive State
+
+Shared state that syncs across instances. Change a feature flag, and all servers see it instantly.
+
+## The Problem
+
+You have a feature flag in memory:
+
+```typescript
+let maintenanceMode = false
+
+// Instance A sets it
+maintenanceMode = true
+
+// Instance B still sees
+maintenanceMode === false  // 💥 out of sync
+```
+
+## The Solution
+
+```typescript
+const config = Signal.create('config')
+  .schema(ConfigSchema)
+  .db(postgres)  // syncs across instances via PostgreSQL
+  .default({ maintenanceMode: false })
+  .build()
+
+await config.set({ maintenanceMode: true })
+// All instances see it within 1 second (polling)
+```
+
+## How It Works
+
+```
+Instance A ──set──▶ Signal ──store──▶ Database
+                      │
+                      ├──poll/notify──▶ Instance B
+                      └──poll/notify──▶ Instance C
+```
+
+## Basic Usage
+
+```typescript
+import { Signal, DB } from '@onepipe/sdk'
+import { z } from 'zod'
+
+const db = DB.create('main').postgres(process.env.DATABASE_URL).build()
+
+const counter = Signal.create('counter')
+  .default(0)
+  .db(db)  // PostgreSQL persistence (recommended)
+  .build()
+
+await counter.get()           // 0
+await counter.set(10)         // set to 10
+await counter.update(n => n + 1)  // 11
+```
+
+## Schema Validation
+
+```typescript
+const ConfigSchema = z.object({
+  maintenanceMode: z.boolean(),
+  maxUsers: z.number(),
+  features: z.object({
+    darkMode: z.boolean(),
+    betaAccess: z.boolean()
+  })
+})
+
+const config = Signal.create('config')
+  .schema(ConfigSchema)
+  .default({
+    maintenanceMode: false,
+    maxUsers: 100,
+    features: { darkMode: false, betaAccess: false }
+  })
+  .db(db)
+  .pollInterval(500)  // sync every 500ms (optional)
+  .build()
+```
+
+## Updating State
+
+```typescript
+// Replace entire state
+await config.set({
+  maintenanceMode: true,
+  maxUsers: 50,
+  features: { darkMode: true, betaAccess: false }
+})
+
+// Partial update (only changes what you specify)
+await config.patch({ maintenanceMode: true })
+
+// Update with function (read-modify-write)
+await config.update(c => ({
+  ...c,
+  maxUsers: c.maxUsers * 2
+}))
+```
+
+## Subscribing to Changes
+
+```typescript
+// Get notified when value changes
+config.subscribe((value) => {
+  if (value.maintenanceMode) {
+    console.log('Entering maintenance mode')
+  }
+})
+```
+
+## Wait For Condition
+
+Block until a condition is met:
+
+```typescript
+// Wait until maintenance mode is off
+await config.waitFor(
+  c => !c.maintenanceMode,
+  30000  // 30s timeout
+)
+
+// Now safe to proceed
+console.log('Maintenance complete')
+```
+
+## Example: Feature Flags
+
+```typescript
+const features = Signal.create('features')
+  .schema(z.object({
+    newCheckout: z.boolean(),
+    darkMode: z.boolean(),
+    aiAssistant: z.boolean()
+  }))
+  .default({
+    newCheckout: false,
+    darkMode: true,
+    aiAssistant: false
+  })
+  .db(db)
+  .build()
+
+// In your API
+app.get('/checkout', async (ctx) => {
+  const flags = await features.get()
+
+  if (flags.newCheckout) {
+    return renderNewCheckout(ctx)
+  }
+  return renderOldCheckout(ctx)
+})
+
+// Toggle from admin panel
+await features.patch({ newCheckout: true })
+// All instances now use new checkout
+```
+
+## Example: Rate Limits
+
+```typescript
+const limits = Signal.create('rate-limits')
+  .schema(z.object({
+    requestsPerMinute: z.number(),
+    burstLimit: z.number()
+  }))
+  .default({ requestsPerMinute: 100, burstLimit: 200 })
+  .db(db)
+  .build()
+
+// Adjust on the fly
+await limits.patch({ requestsPerMinute: 50 })  // tighten during high load
+```
+
+## Persistence Options
+
+| Method | Backend | Sync Method | Use Case |
+|--------|---------|-------------|----------|
+| `.db(postgres)` | PostgreSQL | Polling (1s default) | Recommended - no extra infra |
+| `.cache(redis)` | Redis | Pub/Sub (instant) | When you already have Redis |
+| `.persist('sqlite')` | SQLite | Local only | Single-instance dev |
+| `.persist('memory')` | Memory | None | Testing only |
+
+## Tips
+
+**Use `.db(postgres)` in production** - Keeps all state in your main database. No Redis needed.
+
+**Tune `.pollInterval()`** - Default is 1000ms. Lower for faster sync, higher for less DB load.
+
+**Define a schema** - Zod validation prevents bad config from breaking your app.
+
+**Use `patch()` for partial updates** - Don't overwrite the whole object when you only need to change one field.
+
+**Subscribe for side effects** - React to config changes without polling.

@@ -1,0 +1,56 @@
+# Error Handling
+
+Use APIError for typed, Encore-compatible error responses.
+
+## Basic Usage
+
+```typescript
+import { APIError } from '@onepipe/sdk'
+
+.get('/:id', async (ctx) => {
+  const [user] = await ctx.db.query('SELECT * FROM users WHERE id = ?', [ctx.params.id])
+
+  if (!user) {
+    throw APIError.notFound('User not found')
+  }
+
+  return user
+})
+```
+
+## Error Codes
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `InvalidArgument` | 400 | Invalid input |
+| `NotFound` | 404 | Resource not found |
+| `AlreadyExists` | 409 | Resource already exists |
+| `PermissionDenied` | 403 | Not authorized |
+| `Unauthenticated` | 401 | Not authenticated |
+| `ResourceExhausted` | 429 | Rate limit exceeded |
+| `Internal` | 500 | Internal error |
+| `Unavailable` | 503 | Service unavailable |
+
+## Factory Methods
+
+```typescript
+throw APIError.invalidArgument('Email is required')
+throw APIError.notFound('User not found')
+throw APIError.unauthenticated('Invalid token')
+throw APIError.permissionDenied('Admin access required')
+throw APIError.internal('Processing failed')
+throw APIError.unavailable('Maintenance mode')
+throw APIError.resourceExhausted('Rate limit exceeded')
+
+// For AlreadyExists, use the constructor directly
+throw new APIError('AlreadyExists', 'Email already registered')
+```
+
+## Response Format
+
+```json
+{
+  "code": "NotFound",
+  "message": "User not found"
+}
+```

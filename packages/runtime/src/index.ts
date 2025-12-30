@@ -3,7 +3,7 @@
  *
  * Bun-native HTTP server for OnePipe applications
  *
- * @example
+ * @example API-only app
  * ```typescript
  * import { serve } from '@onepipe/runtime'
  * import { ordersAPI, orderEvents, processPayment } from './app'
@@ -15,10 +15,28 @@
  *   flows: [orderEvents],
  * })
  * ```
+ *
+ * @example Fullstack app with HTML (React, etc.)
+ * ```typescript
+ * import { serve } from '@onepipe/runtime'
+ * import index from './index.html'
+ * import { api, auth } from './app'
+ *
+ * serve({
+ *   port: 3000,
+ *   rest: [api],
+ *   auth,
+ *   html: index,  // Enables Bun's HTML imports with HMR
+ * })
+ * ```
  */
 
-import type { ServeOptions, RESTInstance, ChannelInstance, FlowInstance, WorkflowInstance, CronInstance, DBInstance, AuthInstance } from '@onepipe/sdk'
+import type { ServeOptions, RESTInstance, ChannelInstance, FlowInstance, WorkflowInstance, CronInstance, DBInstance, AuthInstance, LifecycleInstance, CacheInstance } from '@onepipe/sdk'
+import { Log, Lifecycle } from '@onepipe/sdk'
 import { getAuthStore } from './auth-store'
+
+// Create runtime logger
+const logger = Log.create('runtime').console().build()
 
 interface DatabaseRegistration {
   name: string
@@ -42,6 +60,17 @@ interface RuntimeOptions extends ServeOptions {
   databases?: DatabaseRegistration[]
 
   /**
+   * Cache instance for health checks
+   */
+  cache?: CacheInstance
+
+  /**
+   * Lifecycle instance for health checks and graceful shutdown
+   * If not provided, a default one will be created
+   */
+  lifecycle?: LifecycleInstance
+
+  /**
    * Enable embedded Unbroken Protocol server for development
    */
   embeddedStreams?: boolean
@@ -50,12 +79,25 @@ interface RuntimeOptions extends ServeOptions {
    * Base URL for stream server
    */
   streamsUrl?: string
+
+  /**
+   * HTML file for fullstack apps (enables Bun's HTML imports with HMR)
+   * @example html: import("./index.html")
+   */
+  html?: unknown
+
+  /**
+   * Additional routes (Bun routes pattern)
+   */
+  routes?: Record<string, unknown>
 }
 
 interface RuntimeServer {
   port: number
   hostname: string
   stop(): void
+  /** Trigger graceful shutdown */
+  shutdown(): Promise<void>
 }
 
 /**
@@ -74,22 +116,100 @@ export function serve(options: RuntimeOptions): RuntimeServer {
     workflows = [],
     cron = [],
     databases = [],
+    cache,
     embeddedStreams = true,
+    html,
+    routes: customRoutes = {},
   } = options
+
+  // Create or use provided lifecycle
+  let lifecycle = options.lifecycle
+  if (!lifecycle) {
+    const builder = Lifecycle.create()
+
+    // Add health checks for databases
+    for (const { name, instance } of databases) {
+      builder.healthCheck(`db:${name}`, async () => {
+        await instance.query('SELECT 1')
+      })
+    }
+
+    // Add health check for cache if provided
+    if (cache) {
+      builder.healthCheck('cache', async () => {
+        await cache.get('__health_check__')
+      })
+    }
+
+    // Add shutdown hooks for databases
+    for (const { name, instance } of databases) {
+      builder.onShutdown(`close:${name}`, async () => {
+        await instance.close()
+      }, 50) // Priority 50 - close DBs early
+    }
+
+    // Add shutdown hook for cache
+    if (cache) {
+      builder.onShutdown('close:cache', async () => {
+        await cache.close()
+      }, 50)
+    }
+
+    lifecycle = builder.build()
+  }
+
+  // Register signal handlers for graceful shutdown
+  lifecycle.register()
 
   // Start embedded stream server in development
   if (embeddedStreams && process.env.NODE_ENV !== 'production') {
     startEmbeddedStreams()
   }
 
-  // Build combined request handler
-  const handler = createHandler({ rest, channels, flows, projections, signals, auth, workflows, cron, databases })
+  // Build combined request handler for API routes
+  const apiHandler = createHandler({ rest, channels, flows, projections, signals, auth, workflows, cron, databases, lifecycle })
 
-  // Start Bun server
+  // Build routes object for Bun.serve
+  const routes: Record<string, unknown> = {}
+
+  // Add auth routes if configured
+  if (auth) {
+    routes[`${auth.basePath}/*`] = (req: Request) => auth.handler()(req)
+  }
+
+  // Add REST API routes
+  for (const api of rest) {
+    routes[`${api.basePath}/*`] = (req: Request) => apiHandler(req)
+  }
+
+  // Add internal OnePipe routes
+  routes['/__onepipe/*'] = (req: Request) => apiHandler(req)
+
+  // Health check routes (K8s/Cloud Run compatible)
+  routes['/health'] = () => lifecycle.health()      // Detailed health with component status
+  routes['/_health'] = () => lifecycle.liveness()   // K8s liveness probe (always 200 if running)
+  routes['/ready'] = () => lifecycle.readiness()    // K8s readiness probe (checks dependencies)
+
+  routes['/rpc/*'] = (req: Request) => apiHandler(req)
+  routes['/openapi.json'] = (req: Request) => apiHandler(req)
+
+  // Add custom routes
+  Object.assign(routes, customRoutes)
+
+  // Add HTML fallback for SPA (must be last)
+  if (html) {
+    routes['/*'] = html
+  }
+
+  // Start Bun server with routes
   const server = Bun.serve({
     port,
     hostname,
-    fetch: handler,
+    routes,
+    development: process.env.NODE_ENV !== 'production' && {
+      hmr: true,
+      console: true,
+    },
   })
 
   console.log(`
@@ -122,6 +242,10 @@ export function serve(options: RuntimeOptions): RuntimeServer {
     port: server.port,
     hostname: server.hostname,
     stop: () => server.stop(),
+    shutdown: async () => {
+      await lifecycle.shutdown()
+      server.stop()
+    },
   }
 }
 
@@ -138,6 +262,7 @@ function createHandler(options: {
   workflows: WorkflowInstance<unknown, unknown>[]
   cron: CronInstance<unknown>[]
   databases: DatabaseRegistration[]
+  lifecycle: LifecycleInstance
 }): (req: Request) => Promise<Response> {
   const { rest, channels, auth, workflows, cron, databases } = options
 
@@ -174,8 +299,20 @@ function createHandler(options: {
   }
 
   return async (req: Request): Promise<Response> => {
+    const start = Date.now()
     const url = new URL(req.url)
     const pathname = url.pathname
+
+    // Helper to log request after response
+    const logRequest = (response: Response) => {
+      logger.info('request', {
+        method: req.method,
+        path: pathname,
+        status: response.status,
+        duration: Date.now() - start,
+      })
+      return response
+    }
 
     // Check for auth routes first (forward to better-auth handler)
     if (auth && pathname.startsWith(auth.basePath)) {
@@ -206,7 +343,8 @@ function createHandler(options: {
     // Check for REST API match
     for (const [basePath, handler] of restHandlers) {
       if (pathname.startsWith(basePath)) {
-        return handler(req)
+        const response = await handler(req)
+        return logRequest(response)
       }
     }
 
@@ -636,13 +774,8 @@ function createHandler(options: {
       })
     }
 
-    // Health check
-    if (pathname === '/health' || pathname === '/_health') {
-      return new Response(JSON.stringify({ status: 'ok', timestamp: Date.now() }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
+    // Note: /health, /_health, and /ready are now handled by lifecycle routes
+    // See routes configuration in serve()
 
     // OpenAPI aggregate spec
     if (pathname === '/openapi.json') {
@@ -668,8 +801,33 @@ function createHandler(options: {
 
 /**
  * Start embedded Unbroken Protocol server for development
+ *
+ * Cloud-native configuration:
+ * - UNBROKEN_STREAMS_URL: External stream service URL (production)
+ *   When set, no embedded server is started - connect to external service
+ * - ONEPIPE_STREAMS_PORT: Port for embedded server (default: 9999)
+ *
+ * Storage backends (checked in order):
+ * 1. External service (UNBROKEN_STREAMS_URL) - recommended for production
+ * 2. File-based (default for local development)
  */
 async function startEmbeddedStreams(): Promise<void> {
+  // Check if external stream service is configured (production mode)
+  const externalStreamsUrl = process.env.UNBROKEN_STREAMS_URL
+  if (externalStreamsUrl) {
+    try {
+      const response = await fetch(`${externalStreamsUrl}/health`)
+      if (response.ok) {
+        console.log(`  ✓ External streams service: ${externalStreamsUrl}`)
+        return
+      }
+    } catch {
+      console.warn(`  ⚠ External streams service unavailable: ${externalStreamsUrl}`)
+      console.warn(`    Application will continue but streams may not work`)
+    }
+    return // Don't start embedded server when external is configured
+  }
+
   const streamsPort = parseInt(process.env.ONEPIPE_STREAMS_PORT || '9999', 10)
 
   try {
@@ -687,7 +845,7 @@ async function startEmbeddedStreams(): Promise<void> {
     // Dynamic import to avoid bundling issues
     const { UnbrokenServer, FileBackedStreamStore } = await import('@unbroken-protocol/server')
 
-    // Ensure the data directory exists
+    // Use file-based storage for development
     const dataDir = './.onepipe/streams'
     await Bun.write(`${dataDir}/.gitkeep`, '')
 
@@ -702,6 +860,7 @@ async function startEmbeddedStreams(): Promise<void> {
 
     await server.start()
     console.log(`  ✓ Embedded streams server started on port ${streamsPort}`)
+    console.log(`    For production, set UNBROKEN_STREAMS_URL to use external service`)
   } catch (error) {
     console.warn(`  ⚠ Could not start embedded streams server:`, error)
     console.warn(`    Make sure @unbroken-protocol/server is installed`)
