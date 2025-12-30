@@ -5,8 +5,7 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "docs",
-    "examples"
+    "docs"
   ],
   "scripts": {
     "onepipe": "bun run packages/cli/src/index.ts",

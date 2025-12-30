@@ -1,0 +1,235 @@
+# Database Migrations
+
+Version-controlled database schema changes with up/down support.
+
+## Basic Usage
+
+```typescript
+import { Migration } from '@onepipe/sdk'
+
+const createUsersTable = Migration
+  .create('001_create_users')
+  .up(async (db) => {
+    await db.query(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `)
+  })
+  .down(async (db) => {
+    await db.query(`DROP TABLE users`)
+  })
+  .build()
+```
+
+## Naming Convention
+
+Use numbered prefixes for ordering:
+
+```
+migrations/
+  001_create_users.ts
+  002_add_email_verification.ts
+  003_create_orders.ts
+```
+
+The version is extracted from the prefix (e.g., `001`, `002`).
+
+## Running Migrations
+
+```typescript
+import { Migration } from '@onepipe/sdk'
+
+// Load all migrations from directory
+const migrations = await Migration.load('./migrations')
+
+// Run all pending migrations
+const executed = await Migration.run(migrations, './database.db')
+console.log('Executed:', executed)  // ['001_create_users', '002_add_email_verification']
+
+// Check status
+const status = Migration.status(migrations, './database.db')
+console.log('Applied:', status.applied)
+console.log('Pending:', status.pending)
+```
+
+## Rollback
+
+```typescript
+// Rollback last migration
+const rolledBack = await Migration.rollback(migrations, './database.db')
+console.log('Rolled back:', rolledBack)  // '002_add_email_verification'
+```
+
+## Migration Runner
+
+For more control, use the runner directly:
+
+```typescript
+const runner = Migration.runner('./database.db', migrations)
+
+// Run all pending
+await runner.up()
+
+// Rollback one
+await runner.down()
+
+// Rollback all
+await runner.reset()
+
+// Get status
+const status = runner.status()
+
+// Close connection
+runner.close()
+```
+
+## Examples
+
+### Create Table
+
+```typescript
+Migration
+  .create('001_create_products')
+  .up(async (db) => {
+    await db.query(`
+      CREATE TABLE products (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        stock INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `)
+
+    await db.query(`
+      CREATE INDEX idx_products_name ON products(name)
+    `)
+  })
+  .down(async (db) => {
+    await db.query(`DROP TABLE products`)
+  })
+  .build()
+```
+
+### Add Column
+
+```typescript
+Migration
+  .create('002_add_product_category')
+  .up(async (db) => {
+    await db.query(`
+      ALTER TABLE products
+      ADD COLUMN category TEXT
+    `)
+  })
+  .down(async (db) => {
+    // SQLite doesn't support DROP COLUMN directly
+    // Recreate table without the column
+    await db.query(`
+      CREATE TABLE products_new AS
+      SELECT id, name, price, stock, created_at FROM products
+    `)
+    await db.query(`DROP TABLE products`)
+    await db.query(`ALTER TABLE products_new RENAME TO products`)
+  })
+  .build()
+```
+
+### Create Index
+
+```typescript
+Migration
+  .create('003_add_product_indexes')
+  .up(async (db) => {
+    await db.query(`
+      CREATE INDEX idx_products_category ON products(category)
+    `)
+    await db.query(`
+      CREATE INDEX idx_products_price ON products(price)
+    `)
+  })
+  .down(async (db) => {
+    await db.query(`DROP INDEX idx_products_category`)
+    await db.query(`DROP INDEX idx_products_price`)
+  })
+  .build()
+```
+
+### Seed Data
+
+```typescript
+Migration
+  .create('004_seed_categories')
+  .up(async (db) => {
+    const categories = ['Electronics', 'Clothing', 'Books', 'Home']
+    for (const name of categories) {
+      await db.query(`
+        INSERT INTO categories (id, name) VALUES (?, ?)
+      `, [crypto.randomUUID(), name])
+    }
+  })
+  .down(async (db) => {
+    await db.query(`DELETE FROM categories`)
+  })
+  .build()
+```
+
+## Using Transactions
+
+```typescript
+Migration
+  .create('005_complex_migration')
+  .up(async (db) => {
+    await db.transaction(async (tx) => {
+      await tx.query(`CREATE TABLE orders (...)`)
+      await tx.query(`CREATE TABLE order_items (...)`)
+      await tx.query(`CREATE INDEX ...`)
+    })
+  })
+  .down(async (db) => {
+    await db.transaction(async (tx) => {
+      await tx.query(`DROP TABLE order_items`)
+      await tx.query(`DROP TABLE orders`)
+    })
+  })
+  .build()
+```
+
+## CLI Integration
+
+```bash
+# Run pending migrations
+onepipe migrate up
+
+# Rollback last migration
+onepipe migrate down
+
+# Show status
+onepipe migrate status
+```
+
+## Best Practices
+
+1. **Always include down migrations** - Enable rollback capability
+2. **Use transactions** - Keep migrations atomic
+3. **Test rollbacks** - Run down/up cycles in development
+4. **Keep migrations small** - One logical change per migration
+5. **Never modify applied migrations** - Create new ones instead
+6. **Use meaningful names** - Describe what the migration does
+
+## Migration Tracking
+
+Migrations are tracked in the `_migrations` table:
+
+```sql
+CREATE TABLE _migrations (
+  name TEXT PRIMARY KEY,
+  applied_at INTEGER NOT NULL
+)
+```
+
+This table is created automatically on first run.

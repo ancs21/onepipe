@@ -37,9 +37,11 @@ import type {
   UploadedFile,
 } from './types'
 import { APIError } from './types'
+import { Log, type LoggerInstance } from './log'
 import { Trace, type TracerInstance } from './trace'
 import { initTracing, getTracer, SpanStatusCode, setActiveContext, type Tracer } from './otel'
 import { trace, context } from '@opentelemetry/api'
+import { Metrics, type MetricsInstance, type Counter, type Histogram } from './metrics'
 
 // Internal type for parsed multipart data
 interface ParsedMultipart {
@@ -56,6 +58,7 @@ interface RESTBuilderState {
   cache?: CacheInstance
   auth?: AuthInstance
   trace: boolean
+  metrics: boolean
   openapi?: OpenAPIOptions
   cors?: CORSOptions
   maxBodySize?: number
@@ -88,6 +91,7 @@ class RESTBuilder {
       basePath: '',
       routes: [],
       trace: false,
+      metrics: false,
     }
   }
 
@@ -194,6 +198,15 @@ class RESTBuilder {
   }
 
   /**
+   * Enable automatic RED metrics (Rate, Errors, Duration)
+   * Automatically tracks: http_requests_total, http_request_duration_seconds
+   */
+  metrics(): this {
+    this.state.metrics = true
+    return this
+  }
+
+  /**
    * Enable OpenAPI spec generation
    */
   openapi(options?: OpenAPIOptions): this {
@@ -251,9 +264,14 @@ class RESTInstanceImpl implements RESTInstance {
   private auth?: AuthInstance
   private traceEnabled: boolean
   private tracer: Tracer | null = null
+  private metricsEnabled: boolean
+  private metricsInstance: MetricsInstance | null = null
+  private requestCounter: Counter | null = null
+  private requestDuration: Histogram | null = null
   private openapi?: OpenAPIOptions
   private cors?: CORSOptions
   private maxBodySizeBytes: number
+  private logger: LoggerInstance
 
   constructor(state: RESTBuilderState) {
     this.name = state.name
@@ -263,14 +281,30 @@ class RESTInstanceImpl implements RESTInstance {
     this.cache = state.cache
     this.auth = state.auth
     this.traceEnabled = state.trace
+    this.metricsEnabled = state.metrics
     this.openapi = state.openapi
     this.cors = state.cors
     this.maxBodySizeBytes = state.maxBodySize ?? DEFAULT_MAX_BODY_SIZE
+    this.logger = Log.create(`REST:${this.name}`).console().build()
 
     // Initialize OTEL tracing if enabled
     if (this.traceEnabled) {
       initTracing({ serviceName: this.name })
       this.tracer = getTracer(this.name)
+    }
+
+    // Initialize RED metrics if enabled
+    if (this.metricsEnabled) {
+      this.metricsInstance = Metrics.create(this.name).build()
+      this.requestCounter = this.metricsInstance.counter('http_requests_total', {
+        help: 'Total HTTP requests',
+        labels: ['method', 'path', 'status'],
+      })
+      this.requestDuration = this.metricsInstance.histogram('http_request_duration_seconds', {
+        help: 'HTTP request duration in seconds',
+        labels: ['method', 'path'],
+        buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+      })
     }
 
     // Auto-register routes with dashboard in dev mode
@@ -313,6 +347,18 @@ class RESTInstanceImpl implements RESTInstance {
     return async (req: Request): Promise<Response> => {
       const url = new URL(req.url)
       const path = url.pathname
+      const startTime = performance.now()
+
+      // Helper to record metrics and return response
+      const recordMetrics = (response: Response, routePath?: string): Response => {
+        if (this.metricsEnabled && this.requestCounter && this.requestDuration) {
+          const duration = (performance.now() - startTime) / 1000
+          const metricsPath = routePath || path
+          this.requestCounter.inc({ method: req.method, path: metricsPath, status: String(response.status) })
+          this.requestDuration.observe(duration, { method: req.method, path: metricsPath })
+        }
+        return response
+      }
 
       // Handle CORS preflight
       if (req.method === 'OPTIONS' && this.cors) {
@@ -324,20 +370,27 @@ class RESTInstanceImpl implements RESTInstance {
         return this.openapiResponse()
       }
 
+      // Handle metrics endpoint
+      if (this.metricsEnabled && this.metricsInstance && path === `${this.basePath}/metrics`) {
+        return new Response(this.metricsInstance.serialize(), {
+          headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' },
+        })
+      }
+
       // Find matching route
       const { route, pathExists } = this.findRoute(req.method, path)
       if (!route) {
         // If path exists but method doesn't match, return 405
         if (pathExists) {
-          return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+          return recordMetrics(new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
             status: 405,
             headers: this.responseHeaders(),
-          })
+          }), path)
         }
-        return new Response(JSON.stringify({ error: 'Not Found' }), {
+        return recordMetrics(new Response(JSON.stringify({ error: 'Not Found' }), {
           status: 404,
           headers: this.responseHeaders(),
-        })
+        }), path)
       }
 
       // Check authentication
@@ -350,10 +403,10 @@ class RESTInstanceImpl implements RESTInstance {
             : APIError.unauthenticated(
                 typeof authResult.error === 'string' ? authResult.error : 'Unauthorized'
               )
-          return new Response(JSON.stringify(err.toJSON()), {
+          return recordMetrics(new Response(JSON.stringify(err.toJSON()), {
             status: err.status,
             headers: this.responseHeaders(),
-          })
+          }), route.path)
         }
         authenticatedUser = authResult.user
       }
@@ -361,10 +414,10 @@ class RESTInstanceImpl implements RESTInstance {
       // Check body size limit
       const contentLength = parseInt(req.headers.get('content-length') || '0')
       if (contentLength > this.maxBodySizeBytes) {
-        return new Response(JSON.stringify({ error: 'Payload Too Large' }), {
+        return recordMetrics(new Response(JSON.stringify({ error: 'Payload Too Large' }), {
           status: 413,
           headers: this.responseHeaders(),
-        })
+        }), route.path)
       }
 
       // Parse body before building context
@@ -415,43 +468,48 @@ class RESTInstanceImpl implements RESTInstance {
               span.setStatus({
                 code: result.status >= 400 ? SpanStatusCode.ERROR : SpanStatusCode.OK,
               })
-              return result
+              return recordMetrics(result, route.path)
             }
 
             span.setAttribute('http.status_code', 200)
             span.setStatus({ code: SpanStatusCode.OK })
-            return new Response(JSON.stringify(result), {
+            return recordMetrics(new Response(JSON.stringify(result), {
               status: 200,
               headers: this.responseHeaders(),
-            })
+            }), route.path)
           } catch (error) {
-            console.error(`[REST:${this.name}] Error:`, error)
+            const err = error instanceof APIError ? error : new Error(String(error))
+            this.logger.error(err.message, {
+              method: req.method,
+              path,
+              code: error instanceof APIError ? error.code : 'Internal',
+            })
 
             // Handle APIError with typed error codes (Encore-compatible)
             if (error instanceof APIError) {
               span.setAttribute('http.status_code', error.status)
               span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
               span.end()
-              return new Response(
+              return recordMetrics(new Response(
                 JSON.stringify(error.toJSON()),
                 {
                   status: error.status,
                   headers: this.responseHeaders(),
                 }
-              )
+              ), route.path)
             }
 
             // Return generic error message for unknown errors (don't expose internal details)
             span.setAttribute('http.status_code', 500)
             span.setStatus({ code: SpanStatusCode.ERROR, message: 'Internal Server Error' })
             span.end()
-            return new Response(
+            return recordMetrics(new Response(
               JSON.stringify({ code: 'Internal', message: 'Internal Server Error' }),
               {
                 status: 500,
                 headers: this.responseHeaders(),
               }
-            )
+            ), route.path)
           } finally {
             setActiveContext(null) // Clear context after request
             span.end()
@@ -464,33 +522,38 @@ class RESTInstanceImpl implements RESTInstance {
         const result = await route.handler(ctx)
 
         if (result instanceof Response) {
-          return result
+          return recordMetrics(result, route.path)
         }
 
-        return new Response(JSON.stringify(result), {
+        return recordMetrics(new Response(JSON.stringify(result), {
           status: 200,
           headers: this.responseHeaders(),
-        })
+        }), route.path)
       } catch (error) {
-        console.error(`[REST:${this.name}] Error:`, error)
+        const err = error instanceof APIError ? error : new Error(String(error))
+        this.logger.error(err.message, {
+          method: req.method,
+          path,
+          code: error instanceof APIError ? error.code : 'Internal',
+        })
 
         if (error instanceof APIError) {
-          return new Response(
+          return recordMetrics(new Response(
             JSON.stringify(error.toJSON()),
             {
               status: error.status,
               headers: this.responseHeaders(),
             }
-          )
+          ), route.path)
         }
 
-        return new Response(
+        return recordMetrics(new Response(
           JSON.stringify({ code: 'Internal', message: 'Internal Server Error' }),
           {
             status: 500,
             headers: this.responseHeaders(),
           }
-        )
+        ), route.path)
       }
     }
   }

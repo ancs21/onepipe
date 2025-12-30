@@ -69,7 +69,7 @@ import { APIError, type AuthInstance, type AuthResult, type AuthUser, type AuthS
  * }
  *
  * const auth = Auth
- *   .create('main')
+ *   .create('auth')
  *   .provider(betterAuthInstance)
  *   .mapUser<MyUser>((session) => ({
  *     id: session.user.id,

@@ -31,6 +31,7 @@ import type {
   DBInstance,
   AuthInstance,
 } from './types'
+import { registerPrimitive } from './manifest'
 
 // Channel builder state
 interface ChannelBuilderState<TInput, TOutput> {
@@ -44,6 +45,10 @@ interface ChannelBuilderState<TInput, TOutput> {
   auth?: AuthInstance
   db?: DBInstance
   streamUrl?: string
+  /** Function to extract idempotency key from input */
+  idempotencyKeyFn?: (input: TInput) => string
+  /** TTL for idempotency records in milliseconds (default: 24 hours) */
+  idempotencyTtl?: number
 }
 
 /**
@@ -141,12 +146,44 @@ class ChannelBuilder<TInput = unknown, TOutput = unknown> {
   }
 
   /**
+   * Enable idempotency for this channel.
+   * When enabled, duplicate calls with the same key return cached results.
+   * Requires a database connection via .db() for PostgreSQL persistence.
+   *
+   * @example
+   * ```typescript
+   * const payment = Channel.create('process-payment')
+   *   .input(PaymentSchema)
+   *   .db(database)
+   *   .idempotency((input) => input.orderId)  // Use orderId as key
+   *   .handler(async (input) => { ... })
+   *   .build()
+   * ```
+   */
+  idempotency(keyFn: (input: TInput) => string, ttl?: number): this {
+    this.state.idempotencyKeyFn = keyFn
+    this.state.idempotencyTtl = ttl
+    return this
+  }
+
+  /**
    * Build the Channel instance
    */
   build(): ChannelInstance<TInput, TOutput> {
     if (!this.state.handler) {
       throw new Error(`Channel "${this.state.name}" requires a handler`)
     }
+    // Warn if idempotency is enabled without database
+    if (this.state.idempotencyKeyFn && !this.state.db) {
+      console.warn(`[Channel:${this.state.name}] Idempotency requires .db() for persistence across instances`)
+    }
+    // Register with manifest for CLI auto-discovery
+    registerPrimitive({
+      primitive: 'channel',
+      name: this.state.name,
+      infrastructure: this.state.db ? 'postgresql' : undefined,
+      config: { idempotency: !!this.state.idempotencyKeyFn },
+    })
     return new ChannelInstanceImpl<TInput, TOutput>(this.state)
   }
 
@@ -181,6 +218,9 @@ class ChannelInstanceImpl<TInput, TOutput> implements ChannelInstance<TInput, TO
   private auth?: AuthInstance
   private db?: DBInstance
   private streamUrl: string
+  private idempotencyKeyFn?: (input: TInput) => string
+  private idempotencyTtl: number
+  private dbInitialized: boolean = false
 
   constructor(state: ChannelBuilderState<TInput, TOutput>) {
     this.name = state.name
@@ -193,6 +233,131 @@ class ChannelInstanceImpl<TInput, TOutput> implements ChannelInstance<TInput, TO
     this.auth = state.auth
     this.db = state.db
     this.streamUrl = state.streamUrl || this.getDefaultStreamUrl()
+    this.idempotencyKeyFn = state.idempotencyKeyFn
+    this.idempotencyTtl = state.idempotencyTtl || 24 * 60 * 60 * 1000 // 24 hours default
+
+    // Initialize database for idempotency if configured
+    if (this.db && this.idempotencyKeyFn) {
+      this.initializeDatabase()
+    }
+  }
+
+  /**
+   * Initialize PostgreSQL table for idempotency tracking
+   */
+  private async initializeDatabase(): Promise<void> {
+    if (!this.db || this.dbInitialized) return
+
+    try {
+      await this.db.query(`
+        DO $$
+        BEGIN
+          CREATE TABLE IF NOT EXISTS _onepipe_channel_idempotency (
+            channel_name TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            result JSONB,
+            error TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            PRIMARY KEY (channel_name, idempotency_key)
+          );
+        EXCEPTION WHEN duplicate_table OR duplicate_object THEN
+          NULL;
+        END $$
+      `)
+
+      // Create index for cleanup of expired records
+      await this.db.query(`
+        CREATE INDEX IF NOT EXISTS idx_channel_idempotency_expires
+        ON _onepipe_channel_idempotency (expires_at)
+      `).catch(() => {})
+
+      this.dbInitialized = true
+    } catch (error) {
+      const errorMsg = String(error)
+      if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
+        this.dbInitialized = true
+        return
+      }
+      console.error(`[Channel:${this.name}] Failed to initialize idempotency table:`, error)
+    }
+  }
+
+  /**
+   * Check for existing idempotency record
+   */
+  private async checkIdempotency(key: string): Promise<{ hit: boolean; result?: TOutput; error?: string; pending?: boolean }> {
+    if (!this.db) return { hit: false }
+
+    await this.initializeDatabase()
+
+    try {
+      const result = await this.db.query<{ result: TOutput | null; error: string | null; status: string }>(
+        `SELECT result, error, status FROM _onepipe_channel_idempotency
+         WHERE channel_name = $1 AND idempotency_key = $2 AND expires_at > NOW()`,
+        [this.name, key]
+      )
+
+      if (result.length === 0) {
+        return { hit: false }
+      }
+
+      const record = result[0]
+      if (record.status === 'pending') {
+        return { hit: true, pending: true }
+      }
+      if (record.error) {
+        return { hit: true, error: record.error }
+      }
+      return { hit: true, result: record.result as TOutput }
+    } catch (error) {
+      console.error(`[Channel:${this.name}] Failed to check idempotency:`, error)
+      return { hit: false }
+    }
+  }
+
+  /**
+   * Store idempotency record
+   */
+  private async storeIdempotency(key: string, result?: TOutput, error?: string): Promise<void> {
+    if (!this.db) return
+
+    try {
+      await this.db.query(
+        `INSERT INTO _onepipe_channel_idempotency (channel_name, idempotency_key, result, error, status, expires_at)
+         VALUES ($1, $2, $3, $4, $5, NOW() + $6 * INTERVAL '1 millisecond')
+         ON CONFLICT (channel_name, idempotency_key) DO UPDATE
+         SET result = $3, error = $4, status = $5`,
+        [this.name, key, result ? JSON.stringify(result) : null, error || null, error ? 'failed' : 'completed', this.idempotencyTtl]
+      )
+    } catch (err) {
+      console.error(`[Channel:${this.name}] Failed to store idempotency:`, err)
+    }
+  }
+
+  /**
+   * Mark idempotency record as pending (to prevent concurrent execution)
+   */
+  private async markPending(key: string): Promise<boolean> {
+    if (!this.db) return true // Allow execution without DB
+
+    await this.initializeDatabase()
+
+    try {
+      // Use INSERT with conflict handling to ensure atomicity
+      const result = await this.db.query<{ channel_name: string }>(
+        `INSERT INTO _onepipe_channel_idempotency (channel_name, idempotency_key, status, expires_at)
+         VALUES ($1, $2, 'pending', NOW() + $3 * INTERVAL '1 millisecond')
+         ON CONFLICT (channel_name, idempotency_key) DO NOTHING
+         RETURNING channel_name`,
+        [this.name, key, this.idempotencyTtl]
+      )
+      return result.length > 0 // True if we inserted (no conflict)
+    } catch (error) {
+      console.error(`[Channel:${this.name}] Failed to mark pending:`, error)
+      return true // Allow execution on error
+    }
   }
 
   private getDefaultStreamUrl(): string {
@@ -207,6 +372,39 @@ class ChannelInstanceImpl<TInput, TOutput> implements ChannelInstance<TInput, TO
     // Validate input
     if (this.inputSchema) {
       this.inputSchema.parse(input)
+    }
+
+    // Check idempotency if configured
+    let idempotencyKey: string | undefined
+    if (this.idempotencyKeyFn) {
+      idempotencyKey = this.idempotencyKeyFn(input)
+
+      // Check for existing result
+      const existing = await this.checkIdempotency(idempotencyKey)
+      if (existing.hit) {
+        if (existing.pending) {
+          // Another instance is processing - wait and retry
+          await new Promise(resolve => setTimeout(resolve, 100))
+          return this.call(input)
+        }
+        if (existing.error) {
+          throw new Error(existing.error)
+        }
+        if (existing.result !== undefined) {
+          if (this.traceEnabled) {
+            console.debug(`[Channel:${this.name}] Idempotency hit for key: ${idempotencyKey}`)
+          }
+          return existing.result
+        }
+      }
+
+      // Mark as pending to prevent concurrent execution
+      const acquired = await this.markPending(idempotencyKey)
+      if (!acquired) {
+        // Another instance just started processing - wait and retry
+        await new Promise(resolve => setTimeout(resolve, 100))
+        return this.call(input)
+      }
     }
 
     const callId = crypto.randomUUID()
@@ -241,6 +439,11 @@ class ChannelInstanceImpl<TInput, TOutput> implements ChannelInstance<TInput, TO
         const duration = Date.now() - startTime
         await this.recordResponse(callId, result, undefined, duration)
 
+        // Store idempotency result
+        if (idempotencyKey) {
+          await this.storeIdempotency(idempotencyKey, result)
+        }
+
         return result
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
@@ -264,6 +467,11 @@ class ChannelInstanceImpl<TInput, TOutput> implements ChannelInstance<TInput, TO
     // Record failure
     const duration = Date.now() - startTime
     await this.recordResponse(callId, undefined, lastError!.message, duration)
+
+    // Store idempotency failure
+    if (idempotencyKey) {
+      await this.storeIdempotency(idempotencyKey, undefined, lastError!.message)
+    }
 
     throw lastError
   }

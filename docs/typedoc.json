@@ -1,0 +1,49 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["../packages/sdk/src/index.ts"],
+  "tsconfig": "../packages/sdk/tsconfig.docs.json",
+  "exclude": ["**/*.test.ts"],
+  "out": "src/api",
+  "plugin": ["typedoc-plugin-markdown"],
+
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "excludeNotDocumented": false,
+  "excludeReferences": true,
+
+  "hidePageHeader": true,
+  "hideBreadcrumbs": true,
+  "hidePageTitle": false,
+  "disableSources": true,
+
+  "useCodeBlocks": true,
+  "expandObjects": false,
+  "expandParameters": false,
+
+  "parametersFormat": "table",
+  "interfacePropertiesFormat": "table",
+  "classPropertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  "propertyMembersFormat": "table",
+
+  "outputFileStrategy": "modules",
+  "entryFileName": "index",
+  "fileExtension": ".mdx",
+  "mergeReadme": false,
+
+  "groupOrder": [
+    "Classes",
+    "Interfaces",
+    "Type Aliases",
+    "Functions",
+    "Variables"
+  ],
+
+  "textContentMappings": {
+    "title.indexPage": "API Reference",
+    "title.modulePage": "{name}"
+  }
+}

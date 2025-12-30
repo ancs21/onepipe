@@ -47,6 +47,7 @@
 
 import type { CacheOptions, CacheInstance, CacheContext } from './types'
 import { withSpan, isInitialized as isTracingInitialized } from './otel'
+import { registerPrimitive } from './manifest'
 
 /**
  * Safely parse JSON and remove prototype pollution vectors
@@ -130,6 +131,14 @@ export class CacheBuilder {
    * Build the cache instance
    */
   build(): CacheInstance {
+    // Register with manifest for CLI auto-discovery
+    registerPrimitive({
+      primitive: 'cache',
+      name: this.options.name,
+      infrastructure: 'redis',
+      config: { url: this.options.url },
+    })
+
     return new RedisCacheInstance(this.options)
   }
 }

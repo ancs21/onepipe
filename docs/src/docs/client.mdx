@@ -1,0 +1,308 @@
+# Client SDK
+
+Type-safe client for connecting to OnePipe servers from frontend applications.
+
+## Installation
+
+```bash
+bun add @onepipe/client
+```
+
+## Basic Usage
+
+```typescript
+import { createClient } from '@onepipe/client'
+import type { App } from '../server'  // Import server types
+
+const client = createClient<App>({
+  baseUrl: 'http://localhost:3001'
+})
+```
+
+## Flow Client
+
+Access event streams with full type safety:
+
+```typescript
+// Read events
+const events = await client.flows.todoEvents.read({ tail: 10 })
+
+// Read with offset
+const newEvents = await client.flows.todoEvents.read({
+  offset: '0000000100'
+})
+
+// Subscribe to live events
+client.flows.todoEvents.subscribe({
+  onEvent: (event) => {
+    console.log(event.type, event.todoId)  // Fully typed!
+  },
+  onError: (error) => {
+    console.error('Stream error:', error)
+  }
+})
+```
+
+## Signal Client
+
+Access reactive state:
+
+```typescript
+// Get current value
+const config = await client.signals.appConfig.get()
+console.log(config.maintenanceMode)
+
+// Set value
+await client.signals.appConfig.set({
+  maintenanceMode: true,
+  featureFlags: ['new-ui']
+})
+
+// Patch value (partial update)
+await client.signals.appConfig.patch({
+  maintenanceMode: false
+})
+
+// Subscribe to changes
+client.signals.appConfig.subscribe({
+  onValue: (value) => {
+    console.log('Config updated:', value)
+  }
+})
+```
+
+## React Integration
+
+### Provider Setup
+
+```tsx
+import { OnePipeProvider } from '@onepipe/client/react'
+import { createClient } from '@onepipe/client'
+import type { App } from '../server'
+
+const client = createClient<App>({
+  baseUrl: 'http://localhost:3001'
+})
+
+function App() {
+  return (
+    <OnePipeProvider client={client}>
+      <Dashboard />
+    </OnePipeProvider>
+  )
+}
+```
+
+### useFlow Hook
+
+Subscribe to event streams:
+
+```tsx
+import { useFlow } from '@onepipe/client/react'
+import type { App } from '../server'
+
+function EventList() {
+  const { events, loading, error } = useFlow<App>('todoEvents', {
+    live: true,      // Subscribe to live updates
+    tail: 50         // Initial events to fetch
+  })
+
+  if (loading) return <div>Loading...</div>
+  if (error) return <div>Error: {error.message}</div>
+
+  return (
+    <ul>
+      {events.map((event, i) => (
+        <li key={i}>{event.type}: {event.todoId}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+### useSignal Hook
+
+Subscribe to reactive state:
+
+```tsx
+import { useSignal } from '@onepipe/client/react'
+import type { App } from '../server'
+
+function ConfigPanel() {
+  const { value, loading, set, patch } = useSignal<App>('appConfig', {
+    live: true  // Subscribe to live updates
+  })
+
+  if (loading) return <div>Loading...</div>
+
+  return (
+    <div>
+      <label>
+        Maintenance Mode:
+        <input
+          type="checkbox"
+          checked={value?.maintenanceMode}
+          onChange={(e) => patch({ maintenanceMode: e.target.checked })}
+        />
+      </label>
+    </div>
+  )
+}
+```
+
+## Authentication
+
+### AuthProvider Setup
+
+```tsx
+import { AuthProvider } from '@onepipe/client/react'
+
+function App() {
+  return (
+    <AuthProvider baseUrl="http://localhost:3001">
+      <AppRoutes />
+    </AuthProvider>
+  )
+}
+```
+
+### Auth Hooks
+
+```tsx
+import { useAuth, useUser, useSession } from '@onepipe/client/react'
+
+function Profile() {
+  const { isLoaded, isSignedIn, signOut } = useAuth()
+  const user = useUser()
+  const session = useSession()
+
+  if (!isLoaded) return <div>Loading...</div>
+  if (!isSignedIn) return <div>Please sign in</div>
+
+  return (
+    <div>
+      <h1>Welcome, {user?.name}</h1>
+      <p>Email: {user?.email}</p>
+      <button onClick={signOut}>Sign Out</button>
+    </div>
+  )
+}
+```
+
+### Auth Components
+
+Clerk-like components for common auth patterns:
+
+```tsx
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignOutButton,
+  UserButton,
+  Protect
+} from '@onepipe/client/react'
+
+function Header() {
+  return (
+    <nav>
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
+
+      <SignedIn>
+        <UserButton />
+        <SignOutButton />
+      </SignedIn>
+    </nav>
+  )
+}
+
+function AdminPanel() {
+  return (
+    <Protect role="admin" fallback={<div>Access denied</div>}>
+      <AdminDashboard />
+    </Protect>
+  )
+}
+```
+
+## Type Inference
+
+The client automatically infers types from your server definition:
+
+```typescript
+// server.ts
+import { serve, REST, Flow, Signal } from '@onepipe/sdk'
+
+const todoEvents = Flow.create('todoEvents')
+  .schema(z.object({
+    type: z.enum(['created', 'completed', 'deleted']),
+    todoId: z.string()
+  }))
+  .build()
+
+const appConfig = Signal.create('appConfig')
+  .schema(z.object({
+    maintenanceMode: z.boolean(),
+    featureFlags: z.array(z.string())
+  }))
+  .build()
+
+export type App = typeof app
+export const app = serve({
+  flows: { todoEvents },
+  signals: { appConfig }
+})
+```
+
+```typescript
+// client.ts
+import { createClient, InferFlowEvent, InferSignalValue } from '@onepipe/client'
+import type { App } from '../server'
+
+const client = createClient<App>({ baseUrl: '...' })
+
+// Types are automatically inferred
+type TodoEvent = InferFlowEvent<App, 'todoEvents'>
+// { type: 'created' | 'completed' | 'deleted', todoId: string }
+
+type Config = InferSignalValue<App, 'appConfig'>
+// { maintenanceMode: boolean, featureFlags: string[] }
+```
+
+## Client Options
+
+```typescript
+const client = createClient<App>({
+  baseUrl: 'http://localhost:3001',
+
+  // Custom headers for all requests
+  headers: {
+    'Authorization': 'Bearer token'
+  },
+
+  // Custom fetch implementation
+  fetch: customFetch
+})
+```
+
+## Server-Side Rendering
+
+For SSR frameworks like Next.js:
+
+```typescript
+// Create client with request headers
+export async function getServerSideProps(context) {
+  const client = createClient<App>({
+    baseUrl: process.env.API_URL,
+    headers: {
+      cookie: context.req.headers.cookie
+    }
+  })
+
+  const events = await client.flows.todoEvents.read({ tail: 10 })
+
+  return { props: { events } }
+}
+```

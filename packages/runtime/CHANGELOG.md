@@ -1,5 +1,16 @@
 # @onepipe/runtime
 
+## 0.4.0
+
+### Minor Changes
+
+- Bump all packages to next minor version
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @onepipe/sdk@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

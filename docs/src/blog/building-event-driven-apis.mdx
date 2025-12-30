@@ -1,0 +1,208 @@
+Event-driven architecture is a powerful pattern for building scalable, maintainable applications. In this tutorial, we'll build a complete order management system using OnePipe's Flow and Projection primitives.
+
+## The Problem with Traditional CRUD
+
+Traditional CRUD APIs have a fundamental limitation: they only store the current state. When you update a record, the previous state is lost forever.
+
+Consider an order that goes through multiple states:
+1. Created
+2. Paid
+3. Shipped
+4. Delivered
+
+With CRUD, you only know the current status. With event sourcing, you have the complete history.
+
+## Setting Up the Event Flow
+
+First, let's define our order events:
+
+```typescript
+import { Flow } from '@onepipe/sdk'
+
+const OrderEventSchema = {
+  type: {
+    enum: ['created', 'paid', 'shipped', 'delivered', 'cancelled']
+  },
+  orderId: 'string',
+  timestamp: 'string',
+  data: 'object',
+}
+
+const orderFlow = Flow.create('order-events')
+  .schema(OrderEventSchema)
+  .build()
+```
+
+## Appending Events
+
+Events are immutable facts that describe what happened:
+
+```typescript
+// When an order is created
+await orderFlow.append({
+  type: 'created',
+  orderId: 'order-123',
+  timestamp: new Date().toISOString(),
+  data: {
+    customer: 'john@example.com',
+    items: [{ sku: 'WIDGET-1', qty: 2, price: 29.99 }],
+  },
+})
+
+// When payment is received
+await orderFlow.append({
+  type: 'paid',
+  orderId: 'order-123',
+  timestamp: new Date().toISOString(),
+  data: {
+    paymentId: 'pi_xxx',
+    amount: 59.98,
+  },
+})
+```
+
+## Building Projections
+
+Projections transform event streams into queryable state:
+
+```typescript
+import { Projection } from '@onepipe/sdk'
+
+// Current order state projection
+const orders = Projection.create('orders')
+  .from(orderFlow)
+  .initial({})
+  .reduce((state, event) => {
+    const order = state[event.orderId] || {
+      id: event.orderId,
+      events: []
+    }
+
+    return {
+      ...state,
+      [event.orderId]: {
+        ...order,
+        status: event.type,
+        events: [...order.events, event],
+        updatedAt: event.timestamp,
+      },
+    }
+  })
+  .build()
+
+// Analytics projection
+const analytics = Projection.create('order-analytics')
+  .from(orderFlow)
+  .initial({
+    totalOrders: 0,
+    totalRevenue: 0,
+    ordersByStatus: {},
+  })
+  .reduce((state, event) => {
+    if (event.type === 'created') {
+      return {
+        ...state,
+        totalOrders: state.totalOrders + 1,
+        ordersByStatus: {
+          ...state.ordersByStatus,
+          created: (state.ordersByStatus.created || 0) + 1,
+        },
+      }
+    }
+    if (event.type === 'paid') {
+      return {
+        ...state,
+        totalRevenue: state.totalRevenue + event.data.amount,
+      }
+    }
+    return state
+  })
+  .build()
+```
+
+## Real-Time Updates with SSE
+
+OnePipe flows support Server-Sent Events out of the box:
+
+```typescript
+const api = REST.create('orders')
+  .basePath('/api')
+  .get('/orders/:id/stream', async (ctx) => {
+    return orderFlow.stream({
+      filter: (event) => event.orderId === ctx.params.id,
+    })
+  })
+  .build()
+```
+
+Clients can subscribe to real-time updates:
+
+```javascript
+const events = new EventSource('/api/orders/order-123/stream')
+events.onmessage = (e) => {
+  console.log('Order updated:', JSON.parse(e.data))
+}
+```
+
+## Temporal Queries
+
+One of the most powerful features of event sourcing is temporal queries. You can reconstruct state at any point in time:
+
+```typescript
+// Get order state as of a specific date
+const orderAtTime = await orders.getAt('order-123', '2024-12-15T10:00:00Z')
+```
+
+## Putting It All Together
+
+Here's the complete order management API:
+
+```typescript
+import { REST, Flow, Projection, DB } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+const db = DB.create('main').sqlite('./orders.db').build()
+const orderFlow = Flow.create('orders').build()
+
+const orders = Projection.create('orders')
+  .from(orderFlow)
+  .persist(db)
+  .build()
+
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .db(db)
+  .post('/', async (ctx) => {
+    const order = ctx.body()
+    const id = crypto.randomUUID()
+    await orderFlow.append({ type: 'created', orderId: id, data: order })
+    return ctx.created({ id, ...order })
+  })
+  .post('/:id/pay', async (ctx) => {
+    const payment = ctx.body()
+    await orderFlow.append({
+      type: 'paid',
+      orderId: ctx.params.id,
+      data: payment
+    })
+    return ctx.json({ status: 'paid' })
+  })
+  .get('/:id', async (ctx) => {
+    const order = await orders.get(ctx.params.id)
+    return order ? ctx.json(order) : ctx.notFound()
+  })
+  .build()
+
+serve({ port: 3000, rest: [api], flows: [orderFlow] })
+```
+
+## Conclusion
+
+Event-driven APIs provide a solid foundation for building complex applications. With OnePipe, you get:
+
+- Complete audit trails
+- Temporal queries
+- Real-time updates
+- Type-safe event handling
+
+Start building with the [full documentation](/docs/flow) or explore more [examples](/docs/examples).

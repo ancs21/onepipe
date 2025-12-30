@@ -1,0 +1,4708 @@
+# API Reference
+
+## Classes
+
+### APIError
+
+Structured API error with typed error codes
+Use this to throw errors from handlers that will be properly serialized
+
+#### Extends
+
+- `Error`
+
+#### Accessors
+
+##### status
+
+###### Get Signature
+
+```ts
+get status(): number;
+```
+
+Get HTTP status code for this error
+
+###### Returns
+
+`number`
+
+#### Constructors
+
+##### Constructor
+
+```ts
+new APIError(
+   code, 
+   message, 
+   details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `code` | [`APIErrorCode`](#apierrorcode-1) |
+| `message` | `string` |
+| `details?` | `unknown` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+###### Overrides
+
+```ts
+Error.constructor
+```
+
+#### Methods
+
+##### toJSON()
+
+```ts
+toJSON(): object;
+```
+
+Convert to JSON response (safe for client consumption)
+
+###### Returns
+
+`object`
+
+| Name | Type |
+| ------ | ------ |
+| `code` | [`APIErrorCode`](#apierrorcode-1) |
+| `message` | `string` |
+
+##### internal()
+
+```ts
+static internal(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Internal Error'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### invalidArgument()
+
+```ts
+static invalidArgument(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `message` | `string` |
+| `details?` | `unknown` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### notFound()
+
+```ts
+static notFound(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Not Found'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### permissionDenied()
+
+```ts
+static permissionDenied(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Permission Denied'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### resourceExhausted()
+
+```ts
+static resourceExhausted(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Resource Exhausted'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### unauthenticated()
+
+```ts
+static unauthenticated(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Unauthenticated'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+##### unavailable()
+
+```ts
+static unavailable(message, details?): APIError;
+```
+
+###### Parameters
+
+| Parameter | Type | Default value |
+| ------ | ------ | ------ |
+| `message` | `string` | `'Service Unavailable'` |
+| `details?` | `unknown` | `undefined` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="code"></a> `code` | `readonly` | [`APIErrorCode`](#apierrorcode-1) |
+| <a id="details"></a> `details?` | `readonly` | `unknown` |
+
+## Interfaces
+
+### AuthInstance
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TUser` *extends* [`AuthUser`](#authuser) | [`AuthUser`](#authuser) |
+
+#### Methods
+
+##### getSession()
+
+```ts
+getSession(request): Promise<AuthSession | null>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `request` | `Request` |
+
+###### Returns
+
+`Promise`\<`AuthSession` \| `null`\>
+
+##### handler()
+
+```ts
+handler(): (req) => Promise<Response>;
+```
+
+###### Returns
+
+```ts
+(req): Promise<Response>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<`Response`\>
+
+##### listSessions()
+
+```ts
+listSessions(userId): Promise<AuthSession[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `userId` | `string` |
+
+###### Returns
+
+`Promise`\<`AuthSession`[]\>
+
+##### middleware()
+
+```ts
+middleware(): (req) => Promise<AuthResult<TUser>>;
+```
+
+###### Returns
+
+```ts
+(req): Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<[`AuthResult`](#authresult)\<`TUser`\>\>
+
+##### requirePermission()
+
+```ts
+requirePermission(permission): (req) => Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `permission` | `string` \| `string`[] |
+
+###### Returns
+
+```ts
+(req): Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<[`AuthResult`](#authresult)\<`TUser`\>\>
+
+##### requireRole()
+
+```ts
+requireRole(role): (req) => Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `role` | `string` \| `string`[] |
+
+###### Returns
+
+```ts
+(req): Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<[`AuthResult`](#authresult)\<`TUser`\>\>
+
+##### revokeAllSessions()
+
+```ts
+revokeAllSessions(userId): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `userId` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### revokeSession()
+
+```ts
+revokeSession(sessionId): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `sessionId` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### validateToken()
+
+```ts
+validateToken(token): Promise<AuthResult<TUser>>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `token` | `string` |
+
+###### Returns
+
+`Promise`\<[`AuthResult`](#authresult)\<`TUser`\>\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="basepath"></a> `basePath` | `readonly` | `string` |
+| <a id="name"></a> `name` | `readonly` | `string` |
+
+***
+
+### AuthOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="name-1"></a> `name` | `string` |
+| <a id="provider"></a> `provider` | `unknown` |
+
+***
+
+### AuthResult
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TUser` *extends* [`AuthUser`](#authuser) | [`AuthUser`](#authuser) |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="authenticated"></a> `authenticated` | `boolean` |
+| <a id="error"></a> `error?` | `string` \| [`APIError`](#apierror) |
+| <a id="user"></a> `user?` | `TUser` |
+
+***
+
+### AuthUser
+
+#### Indexable
+
+```ts
+[key: string]: unknown
+```
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="email"></a> `email?` | `string` |
+| <a id="id"></a> `id` | `string` |
+| <a id="name-2"></a> `name?` | `string` |
+| <a id="role"></a> `role?` | `string` |
+
+***
+
+### CacheContext
+
+#### Methods
+
+##### decr()
+
+```ts
+decr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### del()
+
+```ts
+del(key): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### exists()
+
+```ts
+exists(key): Promise<boolean>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### get()
+
+```ts
+get<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### incr()
+
+```ts
+incr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### set()
+
+```ts
+set<T>(
+   key, 
+   value, 
+options?): Promise<void>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+| `options?` | \{ `ttl?`: `number`; \} |
+| `options.ttl?` | `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### CacheInstance
+
+#### Methods
+
+##### close()
+
+```ts
+close(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### context()
+
+```ts
+context(): CacheContext;
+```
+
+###### Returns
+
+[`CacheContext`](#cachecontext)
+
+##### decr()
+
+```ts
+decr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### del()
+
+```ts
+del(key): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### exists()
+
+```ts
+exists(key): Promise<boolean>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### expire()
+
+```ts
+expire(key, seconds): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `seconds` | `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### get()
+
+```ts
+get<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hdel()
+
+```ts
+hdel(key, field): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### hget()
+
+```ts
+hget<T>(key, field): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hgetall()
+
+```ts
+hgetall<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hset()
+
+```ts
+hset(
+   key, 
+   field, 
+value): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+| `value` | `unknown` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### incr()
+
+```ts
+incr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### lpop()
+
+```ts
+lpop<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### lpush()
+
+```ts
+lpush<T>(key, value): Promise<number>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### lrange()
+
+```ts
+lrange<T>(
+   key, 
+   start, 
+stop): Promise<T[]>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `start` | `number` |
+| `stop` | `number` |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+##### publish()
+
+```ts
+publish(channel, message): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `channel` | `string` |
+| `message` | `unknown` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### rpop()
+
+```ts
+rpop<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### rpush()
+
+```ts
+rpush<T>(key, value): Promise<number>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### sadd()
+
+```ts
+sadd(key, ...members): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| ...`members` | `string`[] |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### set()
+
+```ts
+set<T>(
+   key, 
+   value, 
+options?): Promise<void>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+| `options?` | \{ `ttl?`: `number`; \} |
+| `options.ttl?` | `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### sismember()
+
+```ts
+sismember(key, member): Promise<boolean>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `member` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### smembers()
+
+```ts
+smembers(key): Promise<string[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`string`[]\>
+
+##### srem()
+
+```ts
+srem(key, ...members): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| ...`members` | `string`[] |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### subscribe()
+
+```ts
+subscribe(channel, callback): () => void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `channel` | `string` |
+| `callback` | (`message`) => `void` |
+
+###### Returns
+
+```ts
+(): void;
+```
+
+###### Returns
+
+`void`
+
+##### ttl()
+
+```ts
+ttl(key): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-3"></a> `name` | `readonly` | `string` |
+
+***
+
+### CacheOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="cluster"></a> `cluster?` | `string`[] |
+| <a id="defaultttl"></a> `defaultTtl?` | `number` |
+| <a id="maxconnections"></a> `maxConnections?` | `number` |
+| <a id="name-4"></a> `name` | `string` |
+| <a id="prefix"></a> `prefix?` | `string` |
+| <a id="trace"></a> `trace?` | `boolean` |
+| <a id="url"></a> `url` | `string` |
+
+***
+
+### ChannelCall
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="duration"></a> `duration` | `number` |
+| <a id="error-1"></a> `error?` | `string` |
+| <a id="id-1"></a> `id` | `string` |
+| <a id="input"></a> `input` | `TInput` |
+| <a id="output"></a> `output?` | `TOutput` |
+| <a id="timestamp"></a> `timestamp` | `number` |
+
+***
+
+### ChannelContext
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TUser` | `unknown` |
+
+#### Methods
+
+##### emit()
+
+```ts
+emit<T>(flow, data): Promise<void>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `flow` | `string` |
+| `data` | `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### span()
+
+```ts
+span(name): void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+
+###### Returns
+
+`void`
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="db"></a> `db` | [`DBContext`](#dbcontext) |
+| <a id="user-1"></a> `user?` | `TUser` |
+
+***
+
+### ChannelInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Methods
+
+##### call()
+
+```ts
+call(input): Promise<TOutput>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `input` | `TInput` |
+
+###### Returns
+
+`Promise`\<`TOutput`\>
+
+##### history()
+
+```ts
+history(options?): Promise<ChannelCall<TInput, TOutput>[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | \{ `limit?`: `number`; `since?`: `string`; \} |
+| `options.limit?` | `number` |
+| `options.since?` | `string` |
+
+###### Returns
+
+`Promise`\<[`ChannelCall`](#channelcall)\<`TInput`, `TOutput`\>[]\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-5"></a> `name` | `readonly` | `string` |
+
+***
+
+### ChannelOptions
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="input-1"></a> `input?` | `ZodType`\<`TInput`, `ZodTypeDef`, `TInput`\> |
+| <a id="name-6"></a> `name` | `string` |
+| <a id="output-1"></a> `output?` | `ZodType`\<`TOutput`, `ZodTypeDef`, `TOutput`\> |
+| <a id="retry"></a> `retry?` | [`RetryOptions`](#retryoptions) |
+| <a id="timeout"></a> `timeout?` | `string` |
+| <a id="trace-1"></a> `trace?` | `boolean` |
+
+***
+
+### CronContext
+
+#### Methods
+
+##### emit()
+
+```ts
+emit<T>(flow, data): Promise<void>;
+```
+
+Emit event to a Flow
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `flow` | [`FlowInstance`](#flowinstance)\<`T`\> |
+| `data` | `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+#### Properties
+
+| Property | Modifier | Type | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="actualtime"></a> `actualTime` | `readonly` | `Date` | Actual execution time |
+| <a id="db-1"></a> `db` | `readonly` | [`DBContext`](#dbcontext) | Database access |
+| <a id="executionid"></a> `executionId` | `readonly` | `string` | Unique execution ID |
+| <a id="jobname"></a> `jobName` | `readonly` | `string` | Job name |
+| <a id="scheduledtime"></a> `scheduledTime` | `readonly` | `Date` | Scheduled execution time |
+
+***
+
+### CronExecution
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TOutput` | `unknown` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="actualtime-1"></a> `actualTime` | `Date` |
+| <a id="durationms"></a> `durationMs?` | `number` |
+| <a id="error-2"></a> `error?` | `string` |
+| <a id="executionid-1"></a> `executionId` | `string` |
+| <a id="jobname-1"></a> `jobName` | `string` |
+| <a id="output-2"></a> `output?` | `TOutput` |
+| <a id="scheduledtime-1"></a> `scheduledTime` | `Date` |
+| <a id="status-1"></a> `status` | [`CronExecutionStatus`](#cronexecutionstatus-1) |
+
+***
+
+### CronHistoryOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="limit"></a> `limit?` | `number` |
+| <a id="since"></a> `since?` | `Date` |
+
+***
+
+### CronInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TOutput` |
+
+#### Methods
+
+##### history()
+
+```ts
+history(options?): Promise<CronExecution<TOutput>[]>;
+```
+
+Get execution history
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`CronHistoryOptions`](#cronhistoryoptions) |
+
+###### Returns
+
+`Promise`\<[`CronExecution`](#cronexecution)\<`TOutput`\>[]\>
+
+##### isRunning()
+
+```ts
+isRunning(): boolean;
+```
+
+Check if scheduler is running
+
+###### Returns
+
+`boolean`
+
+##### nextRun()
+
+```ts
+nextRun(): Date | null;
+```
+
+Get next scheduled execution time
+
+###### Returns
+
+`Date` \| `null`
+
+##### start()
+
+```ts
+start(): void;
+```
+
+Start the scheduler
+
+###### Returns
+
+`void`
+
+##### stop()
+
+```ts
+stop(): void;
+```
+
+Stop the scheduler
+
+###### Returns
+
+`void`
+
+##### trigger()
+
+```ts
+trigger(): Promise<CronExecution<TOutput>>;
+```
+
+Manual trigger
+
+###### Returns
+
+`Promise`\<[`CronExecution`](#cronexecution)\<`TOutput`\>\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-7"></a> `name` | `readonly` | `string` |
+| <a id="schedule"></a> `schedule` | `readonly` | `string` |
+
+***
+
+### CronOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="catchup"></a> `catchUp?` | `boolean` |
+| <a id="maxcatchup"></a> `maxCatchUp?` | `number` |
+| <a id="name-8"></a> `name` | `string` |
+| <a id="schedule-1"></a> `schedule` | `string` |
+| <a id="timezone"></a> `timezone?` | `string` |
+| <a id="trace-2"></a> `trace?` | `boolean` |
+
+***
+
+### DBContext
+
+#### Extended by
+
+- [`DBInstance`](#dbinstance)
+
+#### Methods
+
+##### query()
+
+```ts
+query<T>(
+   sql, 
+   params?, 
+options?): Promise<T[]>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `sql` | `string` |
+| `params?` | `unknown`[] |
+| `options?` | `QueryOptions` |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+##### transaction()
+
+```ts
+transaction<T>(fn): Promise<T>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `fn` | (`tx`) => `Promise`\<`T`\> |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+***
+
+### DBInstance
+
+#### Extends
+
+- [`DBContext`](#dbcontext)
+
+#### Extended by
+
+- [`DrizzleDBInstance`](#drizzledbinstance)
+
+#### Methods
+
+##### close()
+
+```ts
+close(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### getTables()
+
+```ts
+getTables(): Promise<TableInfo[]>;
+```
+
+###### Returns
+
+`Promise`\<`TableInfo`[]\>
+
+##### getTableSchema()
+
+```ts
+getTableSchema(tableName): Promise<ColumnInfo[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `tableName` | `string` |
+
+###### Returns
+
+`Promise`\<`ColumnInfo`[]\>
+
+##### query()
+
+```ts
+query<T>(
+   sql, 
+   params?, 
+options?): Promise<T[]>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `sql` | `string` |
+| `params?` | `unknown`[] |
+| `options?` | `QueryOptions` |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+###### Inherited from
+
+[`DBContext`](#dbcontext).[`query`](#query)
+
+##### transaction()
+
+```ts
+transaction<T>(fn): Promise<T>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `fn` | (`tx`) => `Promise`\<`T`\> |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+###### Inherited from
+
+[`DBContext`](#dbcontext).[`transaction`](#transaction)
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-9"></a> `name` | `readonly` | `string` |
+| <a id="type"></a> `type` | `readonly` | `"sqlite"` \| `"postgres"` \| `"mysql"` |
+
+***
+
+### DBOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="name-10"></a> `name` | `string` |
+| <a id="pool"></a> `pool?` | [`PoolOptions`](#pooloptions) |
+| <a id="trace-3"></a> `trace?` | `boolean` |
+| <a id="type-1"></a> `type` | `"sqlite"` \| `"postgres"` \| `"mysql"` |
+| <a id="url-1"></a> `url` | `string` |
+
+***
+
+### DeployHooks
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="postdeploy"></a> `postDeploy?` | (`env`) => `Promise`\<`void`\> |
+| <a id="predeploy"></a> `preDeploy?` | (`env`) => `Promise`\<`void`\> |
+
+***
+
+### DrizzleDBInstance
+
+DB Instance with Drizzle ORM enabled
+Extends DBInstance with type-safe Drizzle query builder
+
+#### Extends
+
+- [`DBInstance`](#dbinstance)
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TSchema` *extends* `Record`\<`string`, `unknown`\> | `Record`\<`string`, `unknown`\> |
+
+#### Methods
+
+##### close()
+
+```ts
+close(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+###### Inherited from
+
+[`DBInstance`](#dbinstance).[`close`](#close-2)
+
+##### getTables()
+
+```ts
+getTables(): Promise<TableInfo[]>;
+```
+
+###### Returns
+
+`Promise`\<`TableInfo`[]\>
+
+###### Inherited from
+
+[`DBInstance`](#dbinstance).[`getTables`](#gettables)
+
+##### getTableSchema()
+
+```ts
+getTableSchema(tableName): Promise<ColumnInfo[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `tableName` | `string` |
+
+###### Returns
+
+`Promise`\<`ColumnInfo`[]\>
+
+###### Inherited from
+
+[`DBInstance`](#dbinstance).[`getTableSchema`](#gettableschema)
+
+##### query()
+
+```ts
+query<T>(
+   sql, 
+   params?, 
+options?): Promise<T[]>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `sql` | `string` |
+| `params?` | `unknown`[] |
+| `options?` | `QueryOptions` |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+###### Inherited from
+
+[`DBInstance`](#dbinstance).[`query`](#query-2)
+
+##### transaction()
+
+```ts
+transaction<T>(fn): Promise<T>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `fn` | (`tx`) => `Promise`\<`T`\> |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+###### Inherited from
+
+[`DBInstance`](#dbinstance).[`transaction`](#transaction-2)
+
+#### Properties
+
+| Property | Modifier | Type | Description | Inherited from |
+| ------ | ------ | ------ | ------ | ------ |
+| <a id="drizzle"></a> `drizzle` | `readonly` | [`DrizzleInstance`](#drizzleinstance)\<`TSchema`\> | Drizzle query builder with type-safe schema access | - |
+| <a id="name-11"></a> `name` | `readonly` | `string` | - | [`DBInstance`](#dbinstance).[`name`](#name-9) |
+| <a id="type-2"></a> `type` | `readonly` | `"sqlite"` \| `"postgres"` \| `"mysql"` | - | [`DBInstance`](#dbinstance).[`type`](#type) |
+
+***
+
+### DrizzleQueryAPI
+
+Drizzle query API interface
+Provides type-safe query builder methods
+
+#### Methods
+
+##### delete()
+
+```ts
+delete<T>(table): unknown;
+```
+
+Delete from a table
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `table` | `T` |
+
+###### Returns
+
+`unknown`
+
+##### execute()
+
+```ts
+execute<T>(sql): Promise<T>;
+```
+
+Execute raw SQL
+
+###### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `T` | `unknown` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `sql` | `unknown` |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### insert()
+
+```ts
+insert<T>(table): unknown;
+```
+
+Insert into a table
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `table` | `T` |
+
+###### Returns
+
+`unknown`
+
+##### select()
+
+```ts
+select<T>(fields?): unknown;
+```
+
+Select from a table
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` *extends* `Record`\<`string`, `unknown`\> |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `fields?` | `T` |
+
+###### Returns
+
+`unknown`
+
+##### update()
+
+```ts
+update<T>(table): unknown;
+```
+
+Update a table
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `table` | `T` |
+
+###### Returns
+
+`unknown`
+
+***
+
+### EnvironmentConfig
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="database"></a> `database?` | `string` |
+| <a id="redis"></a> `redis?` | `string` |
+| <a id="replicas"></a> `replicas?` | `number` |
+| <a id="streams"></a> `streams` | `string` |
+
+***
+
+### FlowInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+#### Methods
+
+##### append()
+
+```ts
+append(data): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `data` | `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### read()
+
+```ts
+read(options?): Promise<T[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`ReadOptions`](#readoptions) |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+##### stream()
+
+```ts
+stream(options?): AsyncIterable<T>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`StreamOptions`](#streamoptions) |
+
+###### Returns
+
+`AsyncIterable`\<`T`\>
+
+##### subscribe()
+
+```ts
+subscribe(handler): () => void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `handler` | (`data`) => `void` |
+
+###### Returns
+
+```ts
+(): void;
+```
+
+###### Returns
+
+`void`
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-12"></a> `name` | `readonly` | `string` |
+
+***
+
+### FlowOptions
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="name-13"></a> `name` | `string` |
+| <a id="retention"></a> `retention?` | [`RetentionOptions`](#retentionoptions) |
+| <a id="schema"></a> `schema?` | `ZodType`\<`T`, `ZodTypeDef`, `T`\> |
+| <a id="trace-4"></a> `trace?` | `boolean` |
+
+***
+
+### ListWorkflowOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="limit-1"></a> `limit?` | `number` |
+| <a id="offset"></a> `offset?` | `number` |
+| <a id="status-2"></a> `status?` | \| [`WorkflowStatus`](#workflowstatus) \| [`WorkflowStatus`](#workflowstatus)[] |
+
+***
+
+### ManifestEntry
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="config"></a> `config?` | `Record`\<`string`, `unknown`\> |
+| <a id="infrastructure"></a> `infrastructure?` | [`InfrastructureType`](#infrastructuretype) |
+| <a id="name-14"></a> `name` | `string` |
+| <a id="primitive"></a> `primitive` | [`PrimitiveType`](#primitivetype) |
+
+***
+
+### OnePipeConfig
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="environments"></a> `environments` | `Record`\<`string`, [`EnvironmentConfig`](#environmentconfig)\> |
+| <a id="hooks"></a> `hooks?` | [`DeployHooks`](#deployhooks) |
+| <a id="name-15"></a> `name` | `string` |
+
+***
+
+### PoolOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="max"></a> `max?` | `number` |
+| <a id="min"></a> `min?` | `number` |
+
+***
+
+### PresignOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="acl"></a> `acl?` | `"private"` \| `"public-read"` \| `"public-read-write"` | ACL for PUT requests |
+| <a id="expiresin"></a> `expiresIn?` | `number` | URL expiration in seconds (default: 3600) |
+| <a id="method"></a> `method?` | `"GET"` \| `"PUT"` \| `"DELETE"` | HTTP method (default: GET) |
+
+***
+
+### ProjectionInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TState` |
+
+#### Methods
+
+##### get()
+
+###### Call Signature
+
+```ts
+get(): Promise<TState>;
+```
+
+###### Returns
+
+`Promise`\<`TState`\>
+
+###### Call Signature
+
+```ts
+get(key): Promise<TState | undefined>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`TState` \| `undefined`\>
+
+##### keys()
+
+```ts
+keys(): Promise<string[]>;
+```
+
+###### Returns
+
+`Promise`\<`string`[]\>
+
+##### metadata()
+
+```ts
+metadata(): object;
+```
+
+###### Returns
+
+`object`
+
+| Name | Type |
+| ------ | ------ |
+| `eventCount` | `number` |
+| `lastOffset` | `string` |
+| `subscriberCount` | `number` |
+
+##### rebuild()
+
+```ts
+rebuild(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### stop()
+
+```ts
+stop(): void;
+```
+
+###### Returns
+
+`void`
+
+##### subscribe()
+
+```ts
+subscribe(handler): () => void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `handler` | (`state`) => `void` |
+
+###### Returns
+
+```ts
+(): void;
+```
+
+###### Returns
+
+`void`
+
+##### subscribeKey()
+
+```ts
+subscribeKey(key, handler): () => void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `handler` | (`state`) => `void` |
+
+###### Returns
+
+```ts
+(): void;
+```
+
+###### Returns
+
+`void`
+
+##### values()
+
+```ts
+values(): Promise<TState[]>;
+```
+
+###### Returns
+
+`Promise`\<`TState`[]\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-16"></a> `name` | `readonly` | `string` |
+
+***
+
+### ProjectionOptions
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TState` |
+| `TEvent` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="from"></a> `from` | `string` \| [`FlowInstance`](#flowinstance)\<`TEvent`\> |
+| <a id="initial"></a> `initial` | `TState` |
+| <a id="name-17"></a> `name` | `string` |
+| <a id="reduce"></a> `reduce` | (`state`, `event`) => `TState` |
+| <a id="snapshot"></a> `snapshot?` | [`SnapshotOptions`](#snapshotoptions) |
+
+***
+
+### ReadOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="limit-2"></a> `limit?` | `number` |
+| <a id="offset-1"></a> `offset?` | `string` |
+| <a id="tail"></a> `tail?` | `number` |
+
+***
+
+### RESTContext
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TUser` | `unknown` |
+
+#### Methods
+
+##### badRequest()
+
+```ts
+badRequest(message?): Response;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `message?` | `string` |
+
+###### Returns
+
+`Response`
+
+##### body()
+
+```ts
+body<T>(): T;
+```
+
+Get parsed body (JSON, form-urlencoded, or text)
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Returns
+
+`T`
+
+##### created()
+
+```ts
+created<T>(data): Response;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `data` | `T` |
+
+###### Returns
+
+`Response`
+
+##### file()
+
+```ts
+file(name): UploadedFile | undefined;
+```
+
+Get a single uploaded file by field name
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+
+###### Returns
+
+[`UploadedFile`](#uploadedfile) \| `undefined`
+
+##### files()
+
+```ts
+files(name?): UploadedFile[];
+```
+
+Get all uploaded files (optionally filtered by field name)
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name?` | `string` |
+
+###### Returns
+
+[`UploadedFile`](#uploadedfile)[]
+
+##### forbidden()
+
+```ts
+forbidden(message?): Response;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `message?` | `string` |
+
+###### Returns
+
+`Response`
+
+##### formField()
+
+```ts
+formField(name): string | undefined;
+```
+
+Get form field value (for multipart forms)
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+
+###### Returns
+
+`string` \| `undefined`
+
+##### formFields()
+
+```ts
+formFields(): Record<string, string>;
+```
+
+Get all form fields (for multipart forms)
+
+###### Returns
+
+`Record`\<`string`, `string`\>
+
+##### json()
+
+```ts
+json<T>(data, status?): Response;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `data` | `T` |
+| `status?` | `number` |
+
+###### Returns
+
+`Response`
+
+##### noContent()
+
+```ts
+noContent(): Response;
+```
+
+###### Returns
+
+`Response`
+
+##### notFound()
+
+```ts
+notFound(message?): Response;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `message?` | `string` |
+
+###### Returns
+
+`Response`
+
+##### unauthorized()
+
+```ts
+unauthorized(message?): Response;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `message?` | `string` |
+
+###### Returns
+
+`Response`
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="cache"></a> `cache?` | [`CacheContext`](#cachecontext) |
+| <a id="db-2"></a> `db` | [`DBContext`](#dbcontext) |
+| <a id="headers"></a> `headers` | `Headers` |
+| <a id="params"></a> `params` | `Record`\<`string`, `string`\> |
+| <a id="query-6"></a> `query` | `Record`\<`string`, `string`\> |
+| <a id="responseheaders"></a> `responseHeaders` | `Headers` |
+| <a id="user-2"></a> `user?` | `TUser` |
+
+***
+
+### RESTInstance
+
+#### Methods
+
+##### handler()
+
+```ts
+handler(): (req) => Promise<Response>;
+```
+
+###### Returns
+
+```ts
+(req): Promise<Response>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<`Response`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="basepath-1"></a> `basePath` | `readonly` | `string` |
+| <a id="name-18"></a> `name` | `readonly` | `string` |
+| <a id="routes"></a> `routes` | `readonly` | [`RouteDefinition`](#routedefinition)[] |
+
+***
+
+### RESTOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="basepath-2"></a> `basePath` | `string` |
+| <a id="name-19"></a> `name` | `string` |
+
+***
+
+### RetentionOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="maxage"></a> `maxAge?` | `string` |
+| <a id="maxbytes"></a> `maxBytes?` | `number` |
+
+***
+
+### RetryOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="attempts"></a> `attempts?` | `number` |
+| <a id="backoff"></a> `backoff?` | `"linear"` \| `"exponential"` |
+| <a id="delay"></a> `delay?` | `number` |
+
+***
+
+### RouteDefinition
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="handler-4"></a> `handler` | [`RESTHandler`](#resthandler) |
+| <a id="method-1"></a> `method` | `"GET"` \| `"POST"` \| `"PUT"` \| `"PATCH"` \| `"DELETE"` |
+| <a id="options"></a> `options?` | [`RouteOptions`](#routeoptions) |
+| <a id="path"></a> `path` | `string` |
+
+***
+
+### RouteOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="public"></a> `public?` | `boolean` |
+
+***
+
+### ServeOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="auth"></a> `auth?` | [`AuthInstance`](#authinstance)\<[`AuthUser`](#authuser)\> |
+| <a id="cache-1"></a> `cache?` | [`CacheInstance`](#cacheinstance) |
+| <a id="channels"></a> `channels?` | [`ChannelInstance`](#channelinstance)\<`unknown`, `unknown`\>[] |
+| <a id="db-3"></a> `db?` | [`DBInstance`](#dbinstance) |
+| <a id="flows"></a> `flows?` | [`FlowInstance`](#flowinstance)\<`unknown`\>[] |
+| <a id="hostname"></a> `hostname?` | `string` |
+| <a id="port"></a> `port?` | `number` |
+| <a id="projections"></a> `projections?` | [`ProjectionInstance`](#projectioninstance)\<`unknown`\>[] |
+| <a id="rest"></a> `rest?` | [`RESTInstance`](#restinstance)[] |
+| <a id="signals"></a> `signals?` | [`SignalInstance`](#signalinstance)\<`unknown`\>[] |
+
+***
+
+### ServerInstance
+
+Server instance with typed APIs, Flows, and Signals
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TAPIs` *extends* `Record`\<`string`, [`TypedRESTInstance`](#typedrestinstance)\> | `Record`\<`string`, [`TypedRESTInstance`](#typedrestinstance)\> |
+| `TFlows` *extends* `Record`\<`string`, [`FlowInstance`](#flowinstance)\<`unknown`\>\> | `Record`\<`string`, [`FlowInstance`](#flowinstance)\<`unknown`\>\> |
+| `TSignals` *extends* `Record`\<`string`, [`SignalInstance`](#signalinstance)\<`unknown`\>\> | `Record`\<`string`, [`SignalInstance`](#signalinstance)\<`unknown`\>\> |
+
+#### Methods
+
+##### stop()
+
+```ts
+stop(): void;
+```
+
+###### Returns
+
+`void`
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="apis"></a> `apis` | `readonly` | `TAPIs` |
+| <a id="flows-1"></a> `flows` | `readonly` | `TFlows` |
+| <a id="port-1"></a> `port` | `readonly` | `number` |
+| <a id="signals-1"></a> `signals` | `readonly` | `TSignals` |
+
+***
+
+### SignalInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+#### Methods
+
+##### close()
+
+```ts
+close(): void;
+```
+
+###### Returns
+
+`void`
+
+##### get()
+
+```ts
+get(): Promise<T>;
+```
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### metadata()
+
+```ts
+metadata(): object;
+```
+
+###### Returns
+
+`object`
+
+| Name | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `persist` | `string` |
+| `subscriberCount` | `number` |
+
+##### patch()
+
+```ts
+patch(partial): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `partial` | `Partial`\<`T`\> |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### reset()
+
+```ts
+reset(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### set()
+
+```ts
+set(value): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `value` | `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### subscribe()
+
+```ts
+subscribe(handler): () => void;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `handler` | (`value`) => `void` |
+
+###### Returns
+
+```ts
+(): void;
+```
+
+###### Returns
+
+`void`
+
+##### update()
+
+```ts
+update(updater): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `updater` | (`current`) => `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### waitFor()
+
+```ts
+waitFor(predicate, timeout?): Promise<T>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `predicate` | (`value`) => `boolean` |
+| `timeout?` | `number` |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-20"></a> `name` | `readonly` | `string` |
+
+***
+
+### SignalOptions
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="default"></a> `default` | `T` |
+| <a id="name-21"></a> `name` | `string` |
+| <a id="schema-1"></a> `schema?` | `ZodType`\<`T`, `ZodTypeDef`, `T`\> |
+
+***
+
+### SnapshotOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="every"></a> `every?` | `number` |
+| <a id="onstartup"></a> `onStartup?` | `"restore"` \| `"rebuild"` |
+| <a id="storage"></a> `storage?` | `"sqlite"` \| `"memory"` |
+
+***
+
+### StartOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="timeout-1"></a> `timeout?` | `string` | Timeout for this execution |
+| <a id="workflowid"></a> `workflowId?` | `string` | Custom workflow ID for idempotency |
+
+***
+
+### StepExecution
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="attempts-1"></a> `attempts` | `number` |
+| <a id="completedat"></a> `completedAt?` | `Date` |
+| <a id="error-3"></a> `error?` | `string` |
+| <a id="output-3"></a> `output?` | `unknown` |
+| <a id="startedat"></a> `startedAt?` | `Date` |
+| <a id="status-3"></a> `status` | `"pending"` \| `"running"` \| `"completed"` \| `"failed"` |
+| <a id="stepindex"></a> `stepIndex` | `number` |
+| <a id="stepname"></a> `stepName` | `string` |
+
+***
+
+### StepOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="retry-1"></a> `retry?` | [`RetryOptions`](#retryoptions) |
+| <a id="timeout-2"></a> `timeout?` | `string` |
+
+***
+
+### StorageFile
+
+#### Methods
+
+##### arrayBuffer()
+
+```ts
+arrayBuffer(): Promise<ArrayBuffer>;
+```
+
+Read file as ArrayBuffer
+
+###### Returns
+
+`Promise`\<`ArrayBuffer`\>
+
+##### bytes()
+
+```ts
+bytes(): Promise<Uint8Array<ArrayBufferLike>>;
+```
+
+Read file as Uint8Array
+
+###### Returns
+
+`Promise`\<`Uint8Array`\<`ArrayBufferLike`\>\>
+
+##### delete()
+
+```ts
+delete(): Promise<void>;
+```
+
+Delete the file
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### exists()
+
+```ts
+exists(): Promise<boolean>;
+```
+
+Check if file exists
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### json()
+
+```ts
+json<T>(): Promise<T>;
+```
+
+Read file as JSON
+
+###### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `T` | `unknown` |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### presign()
+
+```ts
+presign(options?): string;
+```
+
+Generate a presigned URL
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`PresignOptions`](#presignoptions) |
+
+###### Returns
+
+`string`
+
+##### stream()
+
+```ts
+stream(): ReadableStream<Uint8Array<ArrayBufferLike>>;
+```
+
+Get readable stream
+
+###### Returns
+
+`ReadableStream`\<`Uint8Array`\<`ArrayBufferLike`\>\>
+
+##### text()
+
+```ts
+text(): Promise<string>;
+```
+
+Read file as text
+
+###### Returns
+
+`Promise`\<`string`\>
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="etag"></a> `etag?` | `string` | ETag (content hash) |
+| <a id="key"></a> `key` | `string` | File key/path in the bucket |
+| <a id="lastmodified"></a> `lastModified?` | `Date` | Last modified timestamp |
+| <a id="size"></a> `size` | `number` | File size in bytes |
+| <a id="type-3"></a> `type` | `string` | MIME type |
+
+***
+
+### StorageInstance
+
+#### Methods
+
+##### delete()
+
+```ts
+delete(key): Promise<void>;
+```
+
+Delete a file
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### exists()
+
+```ts
+exists(key): Promise<boolean>;
+```
+
+Check if a file exists
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### file()
+
+```ts
+file(key): StorageFile;
+```
+
+Get a file reference (lazy, no network request)
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+[`StorageFile`](#storagefile)
+
+##### list()
+
+```ts
+list(options?): Promise<StorageListResult>;
+```
+
+List files in the bucket
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`StorageListOptions`](#storagelistoptions) |
+
+###### Returns
+
+`Promise`\<[`StorageListResult`](#storagelistresult)\>
+
+##### presign()
+
+```ts
+presign(key, options?): string;
+```
+
+Generate a presigned URL
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `options?` | [`PresignOptions`](#presignoptions) |
+
+###### Returns
+
+`string`
+
+##### write()
+
+```ts
+write(
+   key, 
+   data, 
+options?): Promise<void>;
+```
+
+Write data to a file
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `data` | \| `string` \| `ArrayBuffer` \| `Blob` \| `Uint8Array`\<`ArrayBufferLike`\> \| `ReadableStream`\<`any`\> |
+| `options?` | [`StorageWriteOptions`](#storagewriteoptions) |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="bucket"></a> `bucket` | `readonly` | `string` |
+| <a id="name-22"></a> `name` | `readonly` | `string` |
+
+***
+
+### StorageListOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="cursor"></a> `cursor?` | `string` | Continuation token for pagination |
+| <a id="delimiter"></a> `delimiter?` | `string` | Delimiter for directory-like listing |
+| <a id="limit-3"></a> `limit?` | `number` | Maximum number of results |
+| <a id="prefix-1"></a> `prefix?` | `string` | Filter by prefix |
+
+***
+
+### StorageListResult
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="cursor-1"></a> `cursor?` | `string` | Continuation token for next page |
+| <a id="files-2"></a> `files` | `object`[] | List of files |
+| <a id="hasmore"></a> `hasMore` | `boolean` | Whether there are more results |
+| <a id="prefixes"></a> `prefixes` | `string`[] | Common prefixes (directories) when using delimiter |
+
+***
+
+### StorageOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="accesskeyid"></a> `accessKeyId?` | `string` | Access key ID (defaults to S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID env var) |
+| <a id="bucket-1"></a> `bucket` | `string` | S3 bucket name |
+| <a id="endpoint"></a> `endpoint?` | `string` | S3 endpoint URL (e.g., https://s3.us-east-1.amazonaws.com) |
+| <a id="name-23"></a> `name` | `string` | - |
+| <a id="region"></a> `region?` | `string` | AWS region |
+| <a id="secretaccesskey"></a> `secretAccessKey?` | `string` | Secret access key (defaults to S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY env var) |
+| <a id="sessiontoken"></a> `sessionToken?` | `string` | Session token for temporary credentials |
+| <a id="trace-5"></a> `trace?` | `boolean` | Enable tracing |
+
+***
+
+### StorageWriteOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="acl-1"></a> `acl?` | `"private"` \| `"public-read"` \| `"public-read-write"` | ACL |
+| <a id="cachecontrol"></a> `cacheControl?` | `string` | Cache-Control header |
+| <a id="contentdisposition"></a> `contentDisposition?` | `string` | Content-Disposition header |
+| <a id="type-4"></a> `type?` | `string` | MIME type |
+
+***
+
+### StreamOptions
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="live"></a> `live?` | `boolean` \| `"sse"` \| `"long-poll"` |
+| <a id="offset-2"></a> `offset?` | `string` |
+
+***
+
+### TracingOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="batch"></a> `batch?` | `object` | Batch processor config |
+| `batch.maxExportBatchSize?` | `number` | Max batch size before export (default: 512) |
+| `batch.scheduledDelayMillis?` | `number` | Max time to wait before export in ms (default: 5000) |
+| <a id="endpoint-1"></a> `endpoint?` | `string` | OTLP endpoint URL (defaults to OTEL_EXPORTER_OTLP_ENDPOINT env var or localhost:4001) |
+| <a id="servicename"></a> `serviceName` | `string` | Service name for traces |
+| <a id="usesimpleprocessor"></a> `useSimpleProcessor?` | `boolean` | Use simple processor instead of batch (for testing) |
+
+***
+
+### TypedRESTInstance
+
+REST API with typed routes
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TRoutes` *extends* `Record`\<`string`, `unknown`\> | `Record`\<`string`, `unknown`\> |
+
+#### Methods
+
+##### handler()
+
+```ts
+handler(): (req) => Promise<Response>;
+```
+
+###### Returns
+
+```ts
+(req): Promise<Response>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `req` | `Request` |
+
+###### Returns
+
+`Promise`\<`Response`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="_routes"></a> `_routes?` | `readonly` | `TRoutes` |
+| <a id="basepath-3"></a> `basePath` | `readonly` | `string` |
+| <a id="name-24"></a> `name` | `readonly` | `string` |
+| <a id="routes-1"></a> `routes` | `readonly` | [`RouteDefinition`](#routedefinition)[] |
+
+***
+
+### TypedRouteDefinition
+
+Route definition with type information
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TMethod` *extends* `string` | `string` |
+| `TPath` *extends* `string` | `string` |
+| `TResponse` | `unknown` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="_response"></a> `_response?` | `TResponse` |
+| <a id="method-2"></a> `method` | `TMethod` |
+| <a id="path-1"></a> `path` | `TPath` |
+
+***
+
+### UploadedFile
+
+Represents an uploaded file from multipart/form-data
+
+#### Methods
+
+##### arrayBuffer()
+
+```ts
+arrayBuffer(): Promise<ArrayBuffer>;
+```
+
+File contents as ArrayBuffer
+
+###### Returns
+
+`Promise`\<`ArrayBuffer`\>
+
+##### blob()
+
+```ts
+blob(): Blob;
+```
+
+File contents as Blob
+
+###### Returns
+
+`Blob`
+
+##### stream()
+
+```ts
+stream(): ReadableStream<Uint8Array<ArrayBufferLike>>;
+```
+
+Stream the file contents
+
+###### Returns
+
+`ReadableStream`\<`Uint8Array`\<`ArrayBufferLike`\>\>
+
+##### text()
+
+```ts
+text(): Promise<string>;
+```
+
+File contents as text
+
+###### Returns
+
+`Promise`\<`string`\>
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="name-25"></a> `name` | `string` | Original filename from the client |
+| <a id="size-1"></a> `size` | `number` | File size in bytes |
+| <a id="type-5"></a> `type` | `string` | MIME type (e.g., 'image/png', 'application/pdf') |
+
+***
+
+### WorkflowContext
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+
+#### Methods
+
+##### child()
+
+```ts
+child<I, O>(
+   workflow, 
+   input, 
+options?): Promise<O>;
+```
+
+Start a child workflow and wait for result
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `I` |
+| `O` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `workflow` | [`WorkflowInstance`](#workflowinstance)\<`I`, `O`\> |
+| `input` | `I` |
+| `options?` | \{ `workflowId?`: `string`; \} |
+| `options.workflowId?` | `string` |
+
+###### Returns
+
+`Promise`\<`O`\>
+
+##### emit()
+
+```ts
+emit<T>(flow, data): Promise<void>;
+```
+
+Emit event to a Flow
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `flow` | [`FlowInstance`](#flowinstance)\<`T`\> |
+| `data` | `T` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### parallel()
+
+```ts
+parallel<T>(steps): Promise<T>;
+```
+
+Execute multiple steps in parallel
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` *extends* readonly `unknown`[] |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `steps` | \[...\{ \[K in string \| number \| symbol\]: Promise\<T\[K\<K\>\]\> \}\[\]\] |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### signal()
+
+```ts
+signal<T>(name, timeout?): Promise<T>;
+```
+
+Wait for an external signal
+
+###### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `T` | `unknown` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `timeout?` | `string` |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### sleep()
+
+```ts
+sleep(duration): Promise<void>;
+```
+
+Durable sleep (survives restarts)
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `duration` | `string` \| `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### step()
+
+```ts
+step<T>(
+   name, 
+   fn, 
+options?): Promise<T>;
+```
+
+Execute a step with at-most-once semantics
+If the step was already completed, returns cached result
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `fn` | () => `Promise`\<`T`\> |
+| `options?` | [`StepOptions`](#stepoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+#### Properties
+
+| Property | Modifier | Type | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="db-4"></a> `db` | `readonly` | [`DBContext`](#dbcontext) | Database access (read-only in workflow, use step for writes) |
+| <a id="input-2"></a> `input` | `readonly` | `TInput` | Input data |
+| <a id="startedat-1"></a> `startedAt` | `readonly` | `Date` | When the workflow started |
+| <a id="workflowid-1"></a> `workflowId` | `readonly` | `string` | Workflow execution ID |
+| <a id="workflowname"></a> `workflowName` | `readonly` | `string` | Workflow name |
+
+***
+
+### WorkflowExecution
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TOutput` | `unknown` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="completedat-1"></a> `completedAt?` | `Date` |
+| <a id="error-4"></a> `error?` | `string` |
+| <a id="input-3"></a> `input` | `unknown` |
+| <a id="output-4"></a> `output?` | `TOutput` |
+| <a id="startedat-2"></a> `startedAt` | `Date` |
+| <a id="status-4"></a> `status` | [`WorkflowStatus`](#workflowstatus) |
+| <a id="steps"></a> `steps` | [`StepExecution`](#stepexecution)[] |
+| <a id="workflowid-2"></a> `workflowId` | `string` |
+| <a id="workflowname-1"></a> `workflowName` | `string` |
+
+***
+
+### WorkflowHandle
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TOutput` |
+
+#### Methods
+
+##### cancel()
+
+```ts
+cancel(): Promise<void>;
+```
+
+Cancel the workflow
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### result()
+
+```ts
+result(timeout?): Promise<TOutput>;
+```
+
+Wait for result (blocks until complete or timeout)
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `timeout?` | `string` |
+
+###### Returns
+
+`Promise`\<`TOutput`\>
+
+##### signal()
+
+```ts
+signal(name, data): Promise<void>;
+```
+
+Send a signal to the workflow
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `data` | `unknown` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### status()
+
+```ts
+status(): Promise<WorkflowStatus>;
+```
+
+Get current status
+
+###### Returns
+
+`Promise`\<[`WorkflowStatus`](#workflowstatus)\>
+
+#### Properties
+
+| Property | Modifier | Type | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="workflowid-3"></a> `workflowId` | `readonly` | `string` | Workflow execution ID |
+
+***
+
+### WorkflowInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Methods
+
+##### cancel()
+
+```ts
+cancel(workflowId): Promise<void>;
+```
+
+Cancel a workflow
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `workflowId` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### get()
+
+```ts
+get(workflowId): WorkflowHandle<TOutput>;
+```
+
+Get handle to existing workflow by ID
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `workflowId` | `string` |
+
+###### Returns
+
+[`WorkflowHandle`](#workflowhandle)\<`TOutput`\>
+
+##### list()
+
+```ts
+list(options?): Promise<WorkflowExecution<TOutput>[]>;
+```
+
+List workflow executions
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options?` | [`ListWorkflowOptions`](#listworkflowoptions) |
+
+###### Returns
+
+`Promise`\<[`WorkflowExecution`](#workflowexecution)\<`TOutput`\>[]\>
+
+##### recover()
+
+```ts
+recover(): Promise<number>;
+```
+
+Resume stalled/crashed workflows (called internally by recovery loop)
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### signal()
+
+```ts
+signal(
+   workflowId, 
+   signalName, 
+data): Promise<void>;
+```
+
+Send a signal to a workflow
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `workflowId` | `string` |
+| `signalName` | `string` |
+| `data` | `unknown` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### start()
+
+```ts
+start(input, options?): Promise<WorkflowHandle<TOutput>>;
+```
+
+Start a new workflow execution
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `input` | `TInput` |
+| `options?` | [`StartOptions`](#startoptions) |
+
+###### Returns
+
+`Promise`\<[`WorkflowHandle`](#workflowhandle)\<`TOutput`\>\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-26"></a> `name` | `readonly` | `string` |
+
+***
+
+### WorkflowOptions
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="input-4"></a> `input?` | `ZodType`\<`TInput`, `ZodTypeDef`, `TInput`\> |
+| <a id="name-27"></a> `name` | `string` |
+| <a id="output-5"></a> `output?` | `ZodType`\<`TOutput`, `ZodTypeDef`, `TOutput`\> |
+| <a id="retry-2"></a> `retry?` | [`RetryOptions`](#retryoptions) |
+| <a id="timeout-3"></a> `timeout?` | `string` |
+| <a id="trace-6"></a> `trace?` | `boolean` |
+
+## Type Aliases
+
+### APIErrorCode
+
+```ts
+type APIErrorCode = 
+  | "OK"
+  | "Canceled"
+  | "Unknown"
+  | "InvalidArgument"
+  | "DeadlineExceeded"
+  | "NotFound"
+  | "AlreadyExists"
+  | "PermissionDenied"
+  | "ResourceExhausted"
+  | "FailedPrecondition"
+  | "Aborted"
+  | "OutOfRange"
+  | "Unimplemented"
+  | "Internal"
+  | "Unavailable"
+  | "DataLoss"
+  | "Unauthenticated";
+```
+
+Standard API error codes (aligned with Encore Cloud)
+
+***
+
+### ChannelHandler()
+
+```ts
+type ChannelHandler<TInput, TOutput, TUser> = (input, ctx) => Promise<TOutput>;
+```
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TInput` | - |
+| `TOutput` | - |
+| `TUser` | `unknown` |
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `input` | `TInput` |
+| `ctx` | [`ChannelContext`](#channelcontext)\<`TUser`\> |
+
+#### Returns
+
+`Promise`\<`TOutput`\>
+
+***
+
+### CronExecutionStatus
+
+```ts
+type CronExecutionStatus = "pending" | "running" | "completed" | "failed";
+```
+
+***
+
+### CronHandler()
+
+```ts
+type CronHandler<TOutput> = (ctx) => Promise<TOutput>;
+```
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TOutput` |
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ctx` | [`CronContext`](#croncontext) |
+
+#### Returns
+
+`Promise`\<`TOutput`\>
+
+***
+
+### DrizzleInstance
+
+```ts
+type DrizzleInstance<TSchema> = object & DrizzleQueryAPI;
+```
+
+Drizzle ORM instance type
+This is a placeholder that gets refined by the actual drizzle-orm types
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `_schema` | `TSchema` | Schema tables for query builder |
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TSchema` *extends* `Record`\<`string`, `unknown`\> | `Record`\<`string`, `unknown`\> |
+
+***
+
+### InferAPIs
+
+```ts
+type InferAPIs<T> = T extends ServerInstance<infer A, infer _F, infer _S> ? A : never;
+```
+
+Helper to extract API types from a server
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferCronOutput
+
+```ts
+type InferCronOutput<T> = T extends CronInstance<infer O> ? O : never;
+```
+
+Extract the output type from a CronInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferFlowEvent
+
+```ts
+type InferFlowEvent<T> = T extends FlowInstance<infer E> ? E : never;
+```
+
+Extract the event type from a FlowInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferFlows
+
+```ts
+type InferFlows<T> = T extends ServerInstance<infer _A, infer F, infer _S> ? F : never;
+```
+
+Helper to extract Flow types from a server
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferSignals
+
+```ts
+type InferSignals<T> = T extends ServerInstance<infer _A, infer _F, infer S> ? S : never;
+```
+
+Helper to extract Signal types from a server
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferSignalValue
+
+```ts
+type InferSignalValue<T> = T extends SignalInstance<infer V> ? V : never;
+```
+
+Extract the value type from a SignalInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferWorkflowInput
+
+```ts
+type InferWorkflowInput<T> = T extends WorkflowInstance<infer I, infer _O> ? I : never;
+```
+
+Extract the input type from a WorkflowInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InferWorkflowOutput
+
+```ts
+type InferWorkflowOutput<T> = T extends WorkflowInstance<infer _I, infer O> ? O : never;
+```
+
+Extract the output type from a WorkflowInstance
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+***
+
+### InfrastructureType
+
+```ts
+type InfrastructureType = "postgresql" | "redis" | "mysql";
+```
+
+***
+
+### PrimitiveType
+
+```ts
+type PrimitiveType = 
+  | "db"
+  | "cache"
+  | "workflow"
+  | "cron"
+  | "flow"
+  | "signal"
+  | "rest"
+  | "auth"
+  | "storage"
+  | "channel";
+```
+
+Runtime Manifest System
+
+SDK primitives register their infrastructure needs when built.
+The CLI reads this manifest to auto-provision required services.
+
+***
+
+### RESTHandler()
+
+```ts
+type RESTHandler<TUser> = (ctx) => Promise<Response | unknown>;
+```
+
+#### Type Parameters
+
+| Type Parameter | Default type |
+| ------ | ------ |
+| `TUser` | `unknown` |
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ctx` | [`RESTContext`](#restcontext)\<`TUser`\> |
+
+#### Returns
+
+`Promise`\<`Response` \| `unknown`\>
+
+***
+
+### WorkflowFunction()
+
+```ts
+type WorkflowFunction<TInput, TOutput> = (ctx, input) => Promise<TOutput>;
+```
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `TInput` |
+| `TOutput` |
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ctx` | [`WorkflowContext`](#workflowcontext)\<`TInput`\> |
+| `input` | `TInput` |
+
+#### Returns
+
+`Promise`\<`TOutput`\>
+
+***
+
+### WorkflowStatus
+
+```ts
+type WorkflowStatus = 
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+```
+
+## Functions
+
+### clearManifest()
+
+```ts
+function clearManifest(): void;
+```
+
+Clear the manifest (useful for testing)
+
+#### Returns
+
+`void`
+
+***
+
+### createAuthRoutes()
+
+```ts
+function createAuthRoutes(auth): object;
+```
+
+Helper to create auth routes handler for use with REST
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `auth` | [`AuthInstance`](#authinstance) |
+
+#### Returns
+
+`object`
+
+| Name | Type |
+| ------ | ------ |
+| `basePath` | `string` |
+| `handler()` | (`req`) => `Promise`\<`Response`\> |
+
+#### Example
+
+```typescript
+import { createAuthRoutes } from '@onepipe/sdk'
+
+// Mount auth routes at /api/auth/*
+const authRoutes = createAuthRoutes(auth)
+```
+
+***
+
+### defineConfig()
+
+```ts
+function defineConfig(config): OnePipeConfig;
+```
+
+Define OnePipe configuration with type safety
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `config` | [`OnePipeConfig`](#onepipeconfig) |
+
+#### Returns
+
+[`OnePipeConfig`](#onepipeconfig)
+
+***
+
+### flushTracing()
+
+```ts
+function flushTracing(): Promise<void>;
+```
+
+Force flush all pending spans
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### getEnvironmentConfig()
+
+```ts
+function getEnvironmentConfig(config, env?): EnvironmentConfig & object;
+```
+
+Get configuration for current environment
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `config` | [`OnePipeConfig`](#onepipeconfig) |
+| `env?` | `string` |
+
+#### Returns
+
+[`EnvironmentConfig`](#environmentconfig) & `object`
+
+***
+
+### getInfrastructureNeeds()
+
+```ts
+function getInfrastructureNeeds(): InfrastructureType[];
+```
+
+Get unique infrastructure requirements from manifest
+
+#### Returns
+
+[`InfrastructureType`](#infrastructuretype)[]
+
+***
+
+### getManifest()
+
+```ts
+function getManifest(): ManifestEntry[];
+```
+
+Get all registered primitives.
+Called by CLI to determine infrastructure needs.
+
+#### Returns
+
+[`ManifestEntry`](#manifestentry)[]
+
+***
+
+### getTracer()
+
+```ts
+function getTracer(name, version?): Tracer;
+```
+
+Get a tracer instance for creating spans
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `version?` | `string` |
+
+#### Returns
+
+`Tracer`
+
+***
+
+### initTracing()
+
+```ts
+function initTracing(options): void;
+```
+
+Initialize OpenTelemetry tracing
+
+Should be called once at app startup. Safe to call multiple times.
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `options` | [`TracingOptions`](#tracingoptions) |
+
+#### Returns
+
+`void`
+
+***
+
+### isTracingInitialized()
+
+```ts
+function isTracingInitialized(): boolean;
+```
+
+Check if tracing is initialized
+
+#### Returns
+
+`boolean`
+
+***
+
+### loadConfig()
+
+```ts
+function loadConfig(configPath?): Promise<OnePipeConfig>;
+```
+
+Load configuration from file
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `configPath?` | `string` |
+
+#### Returns
+
+`Promise`\<[`OnePipeConfig`](#onepipeconfig)\>
+
+***
+
+### registerPrimitive()
+
+```ts
+function registerPrimitive(entry): void;
+```
+
+Register a primitive with the manifest.
+Called automatically by primitives during .build()
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `entry` | [`ManifestEntry`](#manifestentry) |
+
+#### Returns
+
+`void`
+
+***
+
+### setActiveContext()
+
+```ts
+function setActiveContext(ctx): void;
+```
+
+Set the active span context (for use in request handlers)
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ctx` | `Context` \| `null` |
+
+#### Returns
+
+`void`
+
+***
+
+### shutdownTracing()
+
+```ts
+function shutdownTracing(): Promise<void>;
+```
+
+Shutdown the tracer provider and flush pending spans
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### tracedFetch()
+
+```ts
+function tracedFetch(url, options?): Promise<Response>;
+```
+
+Traced fetch wrapper for calling dependent services.
+Automatically creates OTEL child spans when tracing is enabled.
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `url` | `string` |
+| `options?` | `RequestInit` |
+
+#### Returns
+
+`Promise`\<`Response`\>
+
+***
+
+### withSpan()
+
+```ts
+function withSpan<T>(
+   name, 
+   attributes, 
+fn): Promise<T>;
+```
+
+Create a child span if tracing is initialized, otherwise just execute the function.
+Automatically handles span lifecycle, status, and error recording.
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `attributes` | `Record`\<`string`, `string` \| `number` \| `boolean`\> |
+| `fn` | () => `Promise`\<`T`\> |
+
+#### Returns
+
+`Promise`\<`T`\>
+
+#### Example
+
+```typescript
+const result = await withSpan('db.query', {
+  'db.system': 'postgres',
+  'db.statement': 'SELECT * FROM users',
+}, async () => {
+  return await db.query('SELECT * FROM users')
+})
+```
+
+## Variables
+
+### Auth
+
+```ts
+const Auth: object;
+```
+
+Auth entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `AuthBuilder` | Create a new auth builder |
+
+***
+
+### Cache
+
+```ts
+const Cache: object;
+```
+
+Cache entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `CacheBuilder` | Create a new cache builder |
+
+***
+
+### Channel
+
+```ts
+const Channel: object;
+```
+
+Create a new Channel
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-4"></a> `create()` | (`name`) => `ChannelBuilder`\<`unknown`, `unknown`\> | `ChannelBuilder.create` |
+
+***
+
+### Config
+
+```ts
+const Config: object;
+```
+
+Config entry point
+
+#### Type Declaration
+
+| Name | Type | Default value | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="define"></a> `define()` | (`config`) => [`OnePipeConfig`](#onepipeconfig) | `defineConfig` | Define configuration (for onepipe.config.ts) Define OnePipe configuration with type safety |
+| <a id="getenv"></a> `getEnv()` | (`config`, `env?`) => [`EnvironmentConfig`](#environmentconfig) & `object` | `getEnvironmentConfig` | Get environment configuration Get configuration for current environment |
+| <a id="load"></a> `load()` | (`configPath?`) => `Promise`\<[`OnePipeConfig`](#onepipeconfig)\> | `loadConfig` | Load configuration from file Load configuration from file |
+| `create()` | () => `ConfigBuilder` | - | Create configuration builder |
+
+***
+
+### Cron
+
+```ts
+const Cron: object;
+```
+
+Create a new Cron job
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-7"></a> `create()` | (`name`) => `CronBuilder`\<`void`\> | `CronBuilder.create` |
+
+***
+
+### DB
+
+```ts
+const DB: object;
+```
+
+Create a new DB connection
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-8"></a> `create()` | (`name`) => `DBBuilder` | `DBBuilder.create` |
+
+***
+
+### ErrorCodeToHTTPStatus
+
+```ts
+const ErrorCodeToHTTPStatus: Record<APIErrorCode, number>;
+```
+
+Mapping of error codes to HTTP status codes
+
+***
+
+### Flow
+
+```ts
+const Flow: object;
+```
+
+Create a new Flow
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-9"></a> `create()` | (`name`) => `FlowBuilder`\<`unknown`\> | `FlowBuilder.create` |
+
+***
+
+### http
+
+```ts
+const http: object;
+```
+
+HTTP client with convenience methods for common operations.
+All methods are automatically traced when OTEL is initialized.
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| <a id="delete-6"></a> `delete()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a DELETE request |
+| <a id="get-11"></a> `get()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a GET request |
+| <a id="patch-2"></a> `patch()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PATCH request with JSON body |
+| <a id="post"></a> `post()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a POST request with JSON body |
+| <a id="put"></a> `put()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PUT request with JSON body |
+
+***
+
+### Log
+
+```ts
+const Log: object;
+```
+
+Log entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `LogBuilder` | Create a new log builder |
+| `debug()` | (`message`, `context?`) => `void` | Log debug message using global logger |
+| `error()` | (`message`, `context?`) => `void` | Log error message using global logger |
+| `fatal()` | (`message`, `context?`) => `void` | Log fatal message using global logger |
+| `getGlobal()` | () => `LoggerInstance` \| `null` | Get global logger |
+| `info()` | (`message`, `context?`) => `void` | Log info message using global logger |
+| `setGlobal()` | (`logger`) => `void` | Set global logger |
+| `warn()` | (`message`, `context?`) => `void` | Log warn message using global logger |
+
+***
+
+### Metrics
+
+```ts
+const Metrics: object;
+```
+
+Metrics entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `counter()` | (`name`, `options?`) => `Counter` | Get or create a counter on global metrics |
+| `create()` | (`name`) => `MetricsBuilder` | Create a new metrics builder |
+| `gauge()` | (`name`, `options?`) => `Gauge` | Get or create a gauge on global metrics |
+| `getGlobal()` | () => `MetricsInstance` \| `null` | Get global metrics instance |
+| `histogram()` | (`name`, `options?`) => `Histogram` | Get or create a histogram on global metrics |
+| `setGlobal()` | (`metrics`) => `void` | Set global metrics instance |
+
+***
+
+### Migration
+
+```ts
+const Migration: object;
+```
+
+Migration entry point
+
+#### Type Declaration
+
+| Name | Type | Default value | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="load-1"></a> `load()` | (`dir`) => `Promise`\<`MigrationInstance`[]\> | `loadMigrationsFromDir` | Load migrations from directory Load migrations from a directory |
+| `create()` | (`name`) => `MigrationBuilder` | - | Create a new migration builder |
+| `rollback()` | (`migrations`, `dbPath`) => `Promise`\<`string` \| `null`\> | - | Rollback last migration |
+| `run()` | (`migrations`, `dbPath`) => `Promise`\<`string`[]\> | - | Run migrations on a database |
+| `runner()` | (`dbPath`, `migrations`) => `MigrationRunner` | - | Create a migration runner |
+| `status()` | (`migrations`, `dbPath`) => `object` | - | Get migration status |
+
+***
+
+### Projection
+
+```ts
+const Projection: object;
+```
+
+Projection entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `ProjectionBuilder`\<`TState`, `TEvent`\> | Create a new projection builder |
+
+***
+
+### REST
+
+```ts
+const REST: object;
+```
+
+Create a new REST API
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-18"></a> `create()` | (`name`) => `RESTBuilder` | `RESTBuilder.create` |
+
+***
+
+### Server
+
+```ts
+const Server: object;
+```
+
+Create a new server
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-19"></a> `create()` | () => `ServerBuilder` | `ServerBuilder.create` |
+
+***
+
+### Signal
+
+```ts
+const Signal: object;
+```
+
+Signal entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `SignalBuilder`\<`T`\> | Create a new signal builder |
+
+***
+
+### Storage
+
+```ts
+const Storage: object;
+```
+
+Create a new Storage instance
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-22"></a> `create()` | (`name`) => `StorageBuilder` | `StorageBuilder.create` |
+
+***
+
+### Trace
+
+```ts
+const Trace: object;
+```
+
+Trace entry point
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | (`name`) => `TraceBuilder` | Create a new tracer builder |
+| `getGlobal()` | () => `TracerInstance` \| `null` | Get global tracer |
+| `setGlobal()` | (`tracer`) => `void` | Set global tracer |
+| `span()` | (`name`, `fn`) => `Promise`\<`T`\> | Create a span using global tracer |
+
+***
+
+### Workflow
+
+```ts
+const Workflow: object;
+```
+
+Create a new Workflow
+
+#### Type Declaration
+
+| Name | Type | Default value |
+| ------ | ------ | ------ |
+| <a id="create-25"></a> `create()` | (`name`) => `WorkflowBuilder`\<`unknown`, `unknown`\> | `WorkflowBuilder.create` |

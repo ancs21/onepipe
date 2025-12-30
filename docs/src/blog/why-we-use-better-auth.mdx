@@ -1,0 +1,280 @@
+Authentication is one of the most critical parts of any application. Get it wrong, and you expose your users to security vulnerabilities. Build it from scratch, and you'll spend weeks on edge cases. That's why OnePipe integrates with [better-auth](https://better-auth.com) - a modern, type-safe authentication library designed for the TypeScript ecosystem.
+
+## The Authentication Problem
+
+Every backend developer has faced this dilemma: do you roll your own auth, or use a third-party service?
+
+**Rolling your own** means dealing with:
+- Password hashing and salting
+- Session management and token rotation
+- OAuth flows with multiple providers
+- Rate limiting login attempts
+- Email verification flows
+- Password reset security
+
+**Third-party auth services** solve these problems but introduce new ones:
+- Vendor lock-in
+- Per-user pricing that scales poorly
+- Limited customization
+- Data stored outside your infrastructure
+
+better-auth sits in the sweet spot: it's a library you run on your own infrastructure with battle-tested security patterns built in.
+
+## Why better-auth?
+
+### 1. Framework Agnostic, TypeScript First
+
+better-auth works with any framework that supports standard Request/Response. Since OnePipe is built on Bun's native HTTP server, the integration is seamless:
+
+```typescript
+import { Auth } from '@onepipe/sdk'
+import { betterAuth } from 'better-auth'
+
+const betterAuthInstance = betterAuth({
+  database: {
+    provider: 'sqlite',
+    url: './auth.db',
+  },
+  emailAndPassword: {
+    enabled: true,
+  },
+})
+
+const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .build()
+```
+
+### 2. Database Flexibility
+
+better-auth supports multiple databases out of the box - PostgreSQL, MySQL, SQLite, and more. This aligns perfectly with OnePipe's `DB` primitive:
+
+```typescript
+import { DB, Auth } from '@onepipe/sdk'
+import { betterAuth } from 'better-auth'
+
+// Use the same database for your app and auth
+const db = DB.create('main')
+  .postgres(process.env.DATABASE_URL!)
+  .build()
+
+const betterAuthInstance = betterAuth({
+  database: {
+    provider: 'pg',
+    url: process.env.DATABASE_URL!,
+  },
+})
+```
+
+### 3. Social Login Made Simple
+
+OAuth is notoriously complex. better-auth handles the entire flow:
+
+```typescript
+const betterAuthInstance = betterAuth({
+  database: { provider: 'sqlite', url: './auth.db' },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    discord: {
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+    },
+  },
+})
+```
+
+### 4. Session Management
+
+better-auth handles session creation, validation, and revocation. OnePipe's Auth wrapper exposes these capabilities through a clean API:
+
+```typescript
+// Get current session
+const session = await auth.getSession(request)
+
+// Revoke a specific session
+await auth.revokeSession(sessionId)
+
+// Revoke all sessions for a user (logout everywhere)
+await auth.revokeAllSessions(userId)
+```
+
+## The OnePipe Auth Wrapper
+
+While better-auth handles the heavy lifting, OnePipe's `Auth` primitive adds framework integration:
+
+### Automatic Context Injection
+
+When you add auth to a REST API, user information is automatically available in handlers:
+
+```typescript
+const api = REST.create('users')
+  .basePath('/api')
+  .auth(auth)
+  .get('/me', async (ctx) => {
+    // ctx.user is typed and available
+    return {
+      id: ctx.user.id,
+      email: ctx.user.email,
+      role: ctx.user.role,
+    }
+  })
+  .build()
+```
+
+### Role-Based Access Control
+
+Restrict routes to specific roles with a simple option:
+
+```typescript
+const adminApi = REST.create('admin')
+  .basePath('/api/admin')
+  .auth(auth, { roles: ['admin'] })
+  .get('/users', async (ctx) => {
+    return ctx.db`SELECT * FROM users`
+  })
+  .build()
+```
+
+### Custom User Mapping
+
+Map better-auth sessions to your application's user type:
+
+```typescript
+interface AppUser {
+  id: string
+  email: string
+  role: 'admin' | 'user'
+  organizationId?: string
+}
+
+const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .mapUser<AppUser>((session) => ({
+    id: session.user.id,
+    email: session.user.email,
+    role: session.user.role as 'admin' | 'user',
+    organizationId: session.user.organizationId,
+  }))
+  .build()
+```
+
+### Public Routes
+
+Mark specific routes as public while keeping the API authenticated by default:
+
+```typescript
+const api = REST.create('api')
+  .basePath('/api')
+  .auth(auth)
+  .get('/health', { public: true }, async () => {
+    return { status: 'ok' }
+  })
+  .get('/protected', async (ctx) => {
+    // Requires authentication
+    return { user: ctx.user }
+  })
+  .build()
+```
+
+## Complete Example
+
+Here's a full authentication setup with OnePipe:
+
+```typescript
+import { REST, DB, Auth, Server } from '@onepipe/sdk'
+import { betterAuth } from 'better-auth'
+import { serve } from '@onepipe/runtime'
+
+// Database
+const db = DB.create('main')
+  .sqlite('./app.db')
+  .build()
+
+// Auth configuration
+const betterAuthInstance = betterAuth({
+  database: { provider: 'sqlite', url: './app.db' },
+  emailAndPassword: { enabled: true },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+  },
+})
+
+const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .sessionCookie('app_session')
+  .build()
+
+// Public API
+const publicApi = REST.create('public')
+  .basePath('/api')
+  .get('/health', async () => ({ status: 'ok' }))
+  .build()
+
+// Protected API
+const protectedApi = REST.create('protected')
+  .basePath('/api')
+  .auth(auth)
+  .db(db)
+  .get('/me', async (ctx) => {
+    return { user: ctx.user }
+  })
+  .get('/orders', async (ctx) => {
+    return ctx.db`SELECT * FROM orders WHERE user_id = ${ctx.user.id}`
+  })
+  .build()
+
+// Admin API
+const adminApi = REST.create('admin')
+  .basePath('/api/admin')
+  .auth(auth, { roles: ['admin'] })
+  .db(db)
+  .get('/users', async (ctx) => {
+    return ctx.db`SELECT id, email, role FROM users`
+  })
+  .build()
+
+// Start server with auth routes
+serve({
+  port: 3000,
+  rest: [publicApi, protectedApi, adminApi],
+  auth: [auth],
+})
+```
+
+## Why Not Build Our Own?
+
+We considered building authentication into OnePipe directly. Here's why we chose integration instead:
+
+1. **Security expertise** - The better-auth team focuses entirely on auth security. We focus on stream-first architecture.
+
+2. **Community testing** - better-auth is battle-tested by thousands of applications. Our auth code would start at zero.
+
+3. **Maintenance burden** - Auth requires constant updates for new OAuth providers, security patches, and compliance requirements.
+
+4. **User choice** - By wrapping better-auth, we give developers flexibility. You can configure it exactly how you need.
+
+## Getting Started
+
+Install better-auth alongside OnePipe:
+
+```bash
+bun add better-auth
+```
+
+Then follow the [auth documentation](/docs/auth) to set up authentication in your application.
+
+## Conclusion
+
+Authentication shouldn't be an afterthought, but it also shouldn't consume your development time. By integrating with better-auth, OnePipe gives you enterprise-grade authentication with minimal configuration. You get type safety, database flexibility, and social login - all running on your own infrastructure.
+
+Check out the [full auth documentation](/docs/auth) or explore the [example applications](/docs/examples) to see authentication in action.

@@ -1,0 +1,74 @@
+Today we're excited to announce the public release of OnePipe, a stream-first developer platform SDK designed specifically for Bun.
+
+## What is OnePipe?
+
+OnePipe is a comprehensive SDK that brings event sourcing, projections, and reactive patterns to TypeScript developers. Built from the ground up for Bun's native capabilities, it provides a fluent builder API for creating:
+
+- **REST APIs** with automatic OpenAPI generation
+- **Event Flows** for durable, append-only event streams
+- **Projections** for materialized views from event data
+- **Signals** for reactive state management
+- **Channels** for RPC-style communication
+
+## Why Stream-First?
+
+Traditional request-response architectures work well for simple applications, but they often struggle with:
+
+- **Audit trails** - tracking what happened and when
+- **Temporal queries** - understanding state at any point in time
+- **Reactive updates** - pushing changes to clients in real-time
+- **Distributed systems** - coordinating state across services
+
+OnePipe's stream-first approach addresses these challenges by treating events as the source of truth.
+
+## A Quick Example
+
+Here's how simple it is to build an event-driven API with OnePipe:
+
+```typescript
+import { REST, Flow, Projection } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+// Define an event flow
+const orderEvents = Flow.create('orders')
+  .schema({ type: 'string', data: 'object' })
+  .build()
+
+// Create a projection from events
+const orderStats = Projection.create('order-stats')
+  .from(orderEvents)
+  .initial({ total: 0, revenue: 0 })
+  .reduce((state, event) => ({
+    total: state.total + 1,
+    revenue: state.revenue + event.data.amount,
+  }))
+  .build()
+
+// Build a REST API
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .post('/', async (ctx) => {
+    const order = ctx.body()
+    await orderEvents.append({ type: 'created', data: order })
+    return ctx.created(order)
+  })
+  .get('/stats', async () => orderStats.get())
+  .build()
+
+serve({ port: 3000, rest: [api], flows: [orderEvents] })
+```
+
+## What's Next?
+
+We're just getting started. Our roadmap includes:
+
+- Distributed event streaming
+- Built-in CQRS patterns
+- GraphQL subscriptions
+- Kubernetes operators
+
+Check out our [documentation](/docs) to get started, or star us on [GitHub](https://github.com/ancs21/onepipe).
+
+---
+
+*Happy streaming!*

@@ -1,0 +1,466 @@
+/* Zed-inspired Documentation Theme */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   THEME VARIABLES - Zed Dark
+   ======================================== */
+
+/* Dark theme (default) */
+:root {
+  /* Backgrounds - very dark, minimal contrast */
+  --bg-primary: #09090b;
+  --bg-secondary: #0c0c0e;
+  --bg-tertiary: #121214;
+  --bg-elevated: #18181b;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-active: rgba(255, 255, 255, 0.08);
+
+  /* Text - subtle hierarchy */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-muted: #52525b;
+
+  /* Borders - barely visible */
+  --border-subtle: #1f1f23;
+  --border-default: #27272a;
+  --border-strong: #3f3f46;
+
+  /* Accent - warm amber */
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --accent-muted: rgba(245, 158, 11, 0.12);
+
+  /* Code */
+  --code-bg: #0a0a0c;
+  --code-border: #1a1a1e;
+
+  /* Semantic */
+  --success: #22c55e;
+  --warning: #eab308;
+  --error: #ef4444;
+  --info: #3b82f6;
+
+  color-scheme: dark;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  /* Backgrounds - clean, subtle gray tints */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f4f4f5;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.08);
+
+  /* Text - clear hierarchy */
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --text-muted: #a1a1aa;
+
+  /* Borders - subtle definition */
+  --border-subtle: #e4e4e7;
+  --border-default: #d4d4d8;
+  --border-strong: #a1a1aa;
+
+  /* Accent - warm amber (slightly darker for light bg) */
+  --accent: #d97706;
+  --accent-hover: #b45309;
+  --accent-muted: rgba(217, 119, 6, 0.1);
+
+  /* Code */
+  --code-bg: #f4f4f5;
+  --code-border: #e4e4e7;
+
+  /* Semantic */
+  --success: #16a34a;
+  --warning: #ca8a04;
+  --error: #dc2626;
+  --info: #2563eb;
+
+  color-scheme: light;
+}
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 4rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  margin: 0;
+  font-size: 16px;
+}
+
+::selection {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+/* Minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* ========================================
+   VIEW TRANSITIONS
+   ======================================== */
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.05s;
+}
+
+/* ========================================
+   PROSE STYLES - Minimal & Clean
+   ======================================== */
+
+.prose {
+  --prose-body: var(--text-secondary);
+  --prose-headings: var(--text-primary);
+  --prose-links: var(--accent);
+  --prose-code: var(--text-primary);
+
+  max-width: none;
+  color: var(--prose-body);
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+/* Headings - clean, no border */
+.prose h1 {
+  font-size: 2.25rem;
+  font-weight: 600;
+  color: var(--prose-headings);
+  margin-top: 0;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--prose-headings);
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.prose h2:first-child {
+  margin-top: 0;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--prose-headings);
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--prose-headings);
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Add IDs to headings for anchor links */
+.prose h2[id],
+.prose h3[id] {
+  scroll-margin-top: 5rem;
+}
+
+/* Paragraphs */
+.prose p {
+  margin-bottom: 1rem;
+}
+
+.prose > p:first-child {
+  color: var(--text-secondary);
+}
+
+/* Links */
+.prose a {
+  color: var(--prose-links);
+  text-decoration: none;
+  transition: color 0.1s;
+}
+
+.prose a:hover {
+  color: var(--accent-hover);
+}
+
+/* Lists */
+.prose ul,
+.prose ol {
+  padding-left: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.prose ul {
+  list-style-type: disc;
+}
+
+.prose ul li {
+  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+}
+
+.prose ul li::marker {
+  color: var(--text-muted);
+}
+
+.prose ol {
+  list-style-type: decimal;
+}
+
+.prose ol li {
+  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+}
+
+.prose ol li::marker {
+  color: var(--text-muted);
+}
+
+/* ========================================
+   CODE BLOCKS - Minimal
+   ======================================== */
+
+figure[data-rehype-pretty-code-figure] {
+  margin: 1.25rem 0;
+}
+
+.prose pre {
+  font-family: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  border-radius: 3px;
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+}
+
+/* Inline code */
+.prose :not(pre) > code {
+  font-family: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+  font-size: 0.9em;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 0.125rem 0.375rem;
+  border-radius: 2px;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Tables - minimal */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 16px;
+}
+
+.prose thead {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.prose th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.prose td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.prose tr:last-child td {
+  border-bottom: none;
+}
+
+.prose td code {
+  font-size: 12px;
+}
+
+/* Blockquotes */
+.prose blockquote {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--border-default);
+  border-radius: 0;
+}
+
+.prose blockquote p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* Horizontal Rules */
+.prose hr {
+  margin: 2rem 0;
+  border: none;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* Strong & Emphasis */
+.prose strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prose em {
+  font-style: italic;
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Button reset */
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+/* Link reset */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Keyboard shortcut */
+kbd {
+  font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Page entrance */
+.prose {
+  animation: fadeIn 0.1s ease-out;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+  .prose h1 {
+    font-size: 1.75rem;
+  }
+
+  .prose h2 {
+    font-size: 1.375rem;
+  }
+
+  .prose pre {
+    font-size: 13px;
+    padding: 0.875rem 1rem;
+    border-radius: 0;
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    border-left: none;
+    border-right: none;
+  }
+}
+
+/* ========================================
+   BLOG STYLES
+   ======================================== */
+
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

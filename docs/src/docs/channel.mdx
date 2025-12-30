@@ -1,0 +1,211 @@
+# Channel - RPC Handlers
+
+Request/response with retry, timeout, and tracing. Think typed function calls with superpowers.
+
+## The Problem
+
+You have a function that calls an external service:
+
+```typescript
+async function sendEmail(to: string, subject: string) {
+  await mailgun.send({ to, subject })
+}
+```
+
+What happens when mailgun is slow? Or returns a 500? You're stuck handling retries, timeouts, and logging everywhere.
+
+## The Solution
+
+```typescript
+const sendEmail = Channel.create('send-email')
+  .input(z.object({ to: z.string().email(), subject: z.string() }))
+  .output(z.object({ messageId: z.string() }))
+  .retry({ attempts: 3, backoff: 'exponential' })
+  .timeout('30s')
+  .trace()
+  .handler(async (input) => {
+    const result = await mailgun.send(input)
+    return { messageId: result.id }
+  })
+  .build()
+```
+
+Now you get automatic retries, timeouts, input validation, and tracing.
+
+## Basic Usage
+
+```typescript
+import { Channel } from '@onepipe/sdk'
+import { z } from 'zod'
+
+const processOrder = Channel.create('process-order')
+  .input(z.object({
+    orderId: z.string(),
+    items: z.array(z.object({
+      productId: z.string(),
+      quantity: z.number(),
+    })),
+  }))
+  .output(z.object({
+    success: z.boolean(),
+    trackingNumber: z.string().optional(),
+  }))
+  .handler(async (input, ctx) => {
+    const result = await fulfillOrder(input.orderId, input.items)
+    return { success: true, trackingNumber: result.tracking }
+  })
+  .build()
+
+// Call it
+const result = await processOrder.call({
+  orderId: '123',
+  items: [{ productId: 'prod-1', quantity: 2 }],
+})
+```
+
+## What You Get
+
+```
+call() ──▶ validate input ──▶ execute ──▶ validate output ──▶ result
+              │                  │
+              │                  └── retry on failure
+              │                  └── timeout after duration
+              └── reject if schema fails
+```
+
+## Retry Logic
+
+```typescript
+const sendNotification = Channel.create('send-notification')
+  .input(NotificationSchema)
+  .output(z.object({ sent: z.boolean() }))
+  .retry({
+    attempts: 3,           // try up to 3 times
+    backoff: 'exponential', // 1s, 2s, 4s...
+    delay: 1000,           // initial delay
+  })
+  .handler(async (input) => {
+    await pushService.send(input)
+    return { sent: true }
+  })
+  .build()
+```
+
+Backoff options:
+- `'fixed'` - same delay every time
+- `'linear'` - delay increases by `delay` each time (1s, 2s, 3s)
+- `'exponential'` - delay doubles each time (1s, 2s, 4s)
+
+## Timeouts
+
+```typescript
+const generateReport = Channel.create('generate-report')
+  .input(ReportRequestSchema)
+  .timeout('30s')  // kill it after 30 seconds
+  .handler(async (input) => {
+    return await reportGenerator.generate(input)
+  })
+  .build()
+```
+
+Timeout formats: `'5s'`, `'30s'`, `'2m'`, `'1h'`
+
+## Handler Context
+
+```typescript
+.handler(async (input, ctx) => {
+  // Trace span (for observability)
+  ctx.span('validate')
+
+  // Emit to a Flow
+  await ctx.emit('events', { type: 'processed', input })
+
+  // Access database (if configured with .db())
+  const result = await ctx.db.query('SELECT * FROM orders')
+
+  return result
+})
+```
+
+## With Database
+
+```typescript
+const createUser = Channel.create('create-user')
+  .input(z.object({ email: z.string().email(), name: z.string() }))
+  .output(z.object({ id: z.string() }))
+  .db(postgres)
+  .handler(async (input, ctx) => {
+    const [user] = await ctx.db.query(
+      'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id',
+      [input.email, input.name]
+    )
+    return { id: user.id }
+  })
+  .build()
+```
+
+## Example: Payment Processing
+
+```typescript
+const chargeCard = Channel.create('charge-card')
+  .input(z.object({
+    customerId: z.string(),
+    amount: z.number().positive(),
+    currency: z.string().default('usd'),
+    idempotencyKey: z.string(),
+  }))
+  .output(z.object({
+    chargeId: z.string(),
+    status: z.enum(['succeeded', 'pending', 'failed']),
+  }))
+  .retry({
+    attempts: 3,
+    backoff: 'exponential',
+    delay: 500,
+  })
+  .timeout('10s')
+  .trace()
+  .handler(async (input) => {
+    const charge = await stripe.charges.create({
+      customer: input.customerId,
+      amount: input.amount,
+      currency: input.currency,
+    }, {
+      idempotencyKey: input.idempotencyKey,
+    })
+    return { chargeId: charge.id, status: charge.status }
+  })
+  .build()
+```
+
+## Example: External API Call
+
+```typescript
+const fetchWeather = Channel.create('fetch-weather')
+  .input(z.object({ city: z.string() }))
+  .output(z.object({
+    temp: z.number(),
+    conditions: z.string(),
+  }))
+  .retry({ attempts: 2, backoff: 'fixed', delay: 1000 })
+  .timeout('5s')
+  .handler(async (input) => {
+    const res = await fetch(`https://api.weather.com/v1/${input.city}`)
+    if (!res.ok) throw new Error(`Weather API returned ${res.status}`)
+    const data = await res.json()
+    return { temp: data.temperature, conditions: data.conditions }
+  })
+  .build()
+```
+
+## Tips
+
+**Use idempotency keys for payments** - Safe to retry without double-charging.
+
+**Set reasonable timeouts** - Don't let a slow API hang your request forever.
+
+**Use exponential backoff for external APIs** - Gives the service time to recover.
+
+**Define strict schemas** - Catch bad input before it causes problems downstream.
+
+**Add `.trace()` for observability** - See exactly where time is spent.

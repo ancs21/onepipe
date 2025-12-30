@@ -1,0 +1,143 @@
+# OnePipe Documentation
+
+> OnePipe is a stream-first developer platform SDK for Bun. It provides a fluent builder API for creating REST APIs, event flows, database connections, projections, signals, and more.
+
+## Overview
+
+OnePipe enables developers to build event-driven backend applications using TypeScript and Bun. The SDK provides composable primitives that work together seamlessly.
+
+## Core Primitives
+
+### REST API Builder
+Build RESTful endpoints with routing, CORS, OpenAPI generation, and automatic validation.
+
+```typescript
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .db(database)
+  .get('/', async (ctx) => ctx.db.query('SELECT * FROM orders'))
+  .post('/', async (ctx) => ctx.created(ctx.body()))
+  .build()
+```
+
+### Event Flows
+Durable event streams with append, subscribe, and real-time SSE streaming.
+
+```typescript
+const events = Flow.create('orders')
+  .schema({ type: 'string', data: 'object' })
+  .build()
+
+await events.append({ type: 'created', data: order })
+```
+
+### Projections
+Materialized views from event streams with reduce functions.
+
+```typescript
+const stats = Projection.create('order-stats')
+  .from(events)
+  .initial({ count: 0, total: 0 })
+  .reduce((state, event) => ({
+    count: state.count + 1,
+    total: state.total + event.data.amount,
+  }))
+  .build()
+```
+
+### Database
+Unified database abstraction supporting PostgreSQL, MySQL, and SQLite.
+
+```typescript
+const db = DB.create('main')
+  .sqlite('./app.db')
+  .build()
+```
+
+### Signals
+Reactive state management with schema validation and persistence.
+
+```typescript
+const config = Signal.create('app-config')
+  .schema({ theme: 'string', notifications: 'boolean' })
+  .initial({ theme: 'dark', notifications: true })
+  .build()
+```
+
+### Channels
+RPC-style handlers with retry, timeouts, and distributed tracing.
+
+```typescript
+const emailChannel = Channel.create('send-email')
+  .handler(async (payload) => {
+    await sendEmail(payload)
+    return { sent: true }
+  })
+  .build()
+```
+
+## Installation
+
+```bash
+bun add @onepipe/sdk @onepipe/runtime
+```
+
+## Quick Start
+
+```typescript
+import { REST, DB, Flow } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+const db = DB.create('main').sqlite(':memory:').build()
+const events = Flow.create('orders').build()
+
+const api = REST.create('orders')
+  .basePath('/api/orders')
+  .db(db)
+  .post('/', async (ctx) => {
+    const order = ctx.body()
+    await events.append({ type: 'created', data: order })
+    return ctx.created(order)
+  })
+  .build()
+
+serve({ port: 3000, rest: [api], flows: [events] })
+```
+
+## Documentation Links
+
+- Documentation: /docs
+- REST API: /docs/rest
+- Database: /docs/db
+- Flows: /docs/flow
+- Projections: /docs/projection
+- Signals: /docs/signal
+- Channels: /docs/channel
+- Cache: /docs/cache
+- Authentication: /docs/auth
+- Error Handling: /docs/errors
+- Examples: /docs/examples
+- API Reference: /docs/api
+
+## Blog
+
+- /blog - Latest articles and tutorials
+- /blog/introducing-onepipe - Introducing OnePipe: Stream-First Development for Bun
+- /blog/using-claude-code-to-build-features - Using Claude Code to Build Features with OnePipe
+- /blog/integrating-with-existing-frameworks - Integrating OnePipe with Hono, Elysia, Express & More
+- /blog/building-event-driven-apis - Building Event-Driven APIs with Flows and Projections
+- /blog/why-bun-for-backend - Why We Built OnePipe for Bun (SQLite, PostgreSQL, Redis)
+
+## Error Handling
+
+Use the APIError class for typed errors:
+
+```typescript
+throw APIError.notFound('Resource not found')
+throw APIError.invalidArgument('Title is required')
+throw APIError.unavailable('Service in maintenance')
+```
+
+## License
+
+MIT License - https://github.com/ancs21/onepipe

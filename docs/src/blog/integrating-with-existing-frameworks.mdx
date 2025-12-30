@@ -1,0 +1,297 @@
+OnePipe is designed to work seamlessly with your existing stack. Whether you're using Hono, Elysia, Express, or any other framework, you can gradually adopt OnePipe's primitives without rewriting your entire application.
+
+## The Integration Philosophy
+
+OnePipe isn't trying to replace your framework. Instead, it provides powerful primitives that complement what you already have:
+
+- **Flows** for event sourcing alongside your existing REST routes
+- **Projections** for materialized views without changing your data layer
+- **Signals** for reactive config without a state management overhaul
+- **Cache** as a drop-in caching layer
+
+## Hono Integration
+
+Hono is a blazing-fast web framework that pairs perfectly with OnePipe:
+
+```typescript
+import { Hono } from 'hono'
+import { Flow, Projection, DB } from '@onepipe/sdk'
+
+const app = new Hono()
+
+// OnePipe primitives
+const db = DB.create('main').sqlite('./app.db').build()
+const orderEvents = Flow.create('orders').build()
+const orderStats = Projection.create('stats')
+  .from(orderEvents)
+  .initial({ count: 0, revenue: 0 })
+  .reduce((state, event) => ({
+    count: state.count + 1,
+    revenue: state.revenue + (event.data.amount || 0),
+  }))
+  .build()
+
+// Hono routes using OnePipe
+app.post('/orders', async (c) => {
+  const order = await c.req.json()
+  const id = crypto.randomUUID()
+
+  // Emit event to OnePipe Flow
+  await orderEvents.append({
+    type: 'order.created',
+    data: { id, ...order },
+  })
+
+  return c.json({ id, ...order }, 201)
+})
+
+app.get('/stats', async (c) => {
+  // Read from OnePipe Projection
+  const stats = await orderStats.get()
+  return c.json(stats)
+})
+
+app.get('/orders/stream', (c) => {
+  // SSE streaming from OnePipe Flow
+  return orderEvents.stream()
+})
+
+export default app
+```
+
+## Elysia Integration
+
+Elysia's plugin system makes OnePipe integration elegant:
+
+```typescript
+import { Elysia } from 'elysia'
+import { Flow, Cache, Signal } from '@onepipe/sdk'
+
+// Create OnePipe primitives
+const analyticsFlow = Flow.create('analytics').build()
+const cache = Cache.create('app').redis({ host: 'localhost' }).build()
+const config = Signal.create('config')
+  .initial({ rateLimit: 100, maintenanceMode: false })
+  .build()
+
+// Elysia plugin for OnePipe
+const onepipe = new Elysia({ name: 'onepipe' })
+  .decorate('flow', analyticsFlow)
+  .decorate('cache', cache)
+  .decorate('config', config)
+
+// Main app
+const app = new Elysia()
+  .use(onepipe)
+  .get('/api/users/:id', async ({ params, cache }) => {
+    // Check cache first
+    const cached = await cache.get(`user:${params.id}`)
+    if (cached) return cached
+
+    // Fetch and cache
+    const user = await fetchUser(params.id)
+    await cache.set(`user:${params.id}`, user, { ttl: 300 })
+    return user
+  })
+  .post('/api/events', async ({ body, flow }) => {
+    // Track event in OnePipe Flow
+    await flow.append({
+      type: 'page.view',
+      data: body,
+      timestamp: Date.now(),
+    })
+    return { tracked: true }
+  })
+  .get('/api/config', async ({ config }) => {
+    // Read reactive config
+    return config.get()
+  })
+  .listen(3000)
+```
+
+## Express Integration
+
+Already running Express? Add OnePipe without changing your existing routes:
+
+```typescript
+import express from 'express'
+import { Flow, Projection, DB } from '@onepipe/sdk'
+
+const app = express()
+app.use(express.json())
+
+// Initialize OnePipe
+const db = DB.create('main').postgres(process.env.DATABASE_URL).build()
+const auditLog = Flow.create('audit').build()
+
+// Middleware to inject OnePipe into request
+app.use((req, res, next) => {
+  req.db = db
+  req.audit = auditLog
+  next()
+})
+
+// Existing Express routes work as before
+app.get('/users', async (req, res) => {
+  const users = await req.db.query('SELECT * FROM users')
+  res.json(users)
+})
+
+// Add audit logging with OnePipe
+app.post('/users', async (req, res) => {
+  const user = req.body
+
+  // Your existing logic
+  const result = await req.db.query(
+    'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
+    [user.name, user.email]
+  )
+
+  // Add event sourcing without changing business logic
+  await req.audit.append({
+    type: 'user.created',
+    userId: result[0].id,
+    actor: req.user?.id,
+    timestamp: new Date().toISOString(),
+  })
+
+  res.status(201).json(result[0])
+})
+
+// New endpoint: audit trail from OnePipe
+app.get('/users/:id/history', async (req, res) => {
+  const events = await auditLog.query({
+    filter: (e) => e.userId === req.params.id,
+  })
+  res.json(events)
+})
+
+app.listen(3000)
+```
+
+## Fastify Integration
+
+Fastify's plugin architecture works great with OnePipe:
+
+```typescript
+import Fastify from 'fastify'
+import { Flow, Cache } from '@onepipe/sdk'
+
+const fastify = Fastify({ logger: true })
+
+// OnePipe plugin
+fastify.register(async (app) => {
+  const eventFlow = Flow.create('events').build()
+  const cache = Cache.create('app').redis({ host: 'localhost' }).build()
+
+  app.decorate('eventFlow', eventFlow)
+  app.decorate('cache', cache)
+})
+
+// Routes with OnePipe
+fastify.post('/events', async (request, reply) => {
+  await fastify.eventFlow.append({
+    type: request.body.type,
+    data: request.body.data,
+  })
+  return { success: true }
+})
+
+fastify.get('/events/stream', async (request, reply) => {
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  })
+
+  const unsubscribe = fastify.eventFlow.subscribe((event) => {
+    reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+  })
+
+  request.raw.on('close', unsubscribe)
+})
+
+fastify.listen({ port: 3000 })
+```
+
+## Gradual Migration Strategy
+
+You don't need to rewrite everything. Here's a practical migration path:
+
+### Phase 1: Add Event Sourcing
+Keep your existing CRUD, add events for audit and analytics:
+
+```typescript
+// Before: Just CRUD
+await db.query('UPDATE orders SET status = $1 WHERE id = $2', [status, id])
+
+// After: CRUD + Events
+await db.query('UPDATE orders SET status = $1 WHERE id = $2', [status, id])
+await orderFlow.append({ type: 'order.status_changed', orderId: id, status })
+```
+
+### Phase 2: Add Projections
+Build read models from events for complex queries:
+
+```typescript
+const ordersByCustomer = Projection.create('orders-by-customer')
+  .from(orderFlow)
+  .initial({})
+  .reduce((state, event) => {
+    if (event.type === 'order.created') {
+      const customer = event.data.customerId
+      state[customer] = [...(state[customer] || []), event.data]
+    }
+    return state
+  })
+  .build()
+
+// Fast reads without complex JOINs
+app.get('/customers/:id/orders', async (c) => {
+  const orders = await ordersByCustomer.get(c.req.param('id'))
+  return c.json(orders)
+})
+```
+
+### Phase 3: Add Caching
+Drop in caching where it matters:
+
+```typescript
+const cache = Cache.create('api').redis({ host: 'localhost' }).build()
+
+app.get('/products/:id', async (c) => {
+  const id = c.req.param('id')
+
+  // Check cache
+  let product = await cache.get(`product:${id}`)
+  if (!product) {
+    product = await db.query('SELECT * FROM products WHERE id = $1', [id])
+    await cache.set(`product:${id}`, product, { ttl: 600 })
+  }
+
+  return c.json(product)
+})
+```
+
+## Framework Comparison
+
+| Framework | Best For | OnePipe Integration |
+|-----------|----------|---------------------|
+| Hono | Edge, Cloudflare Workers | Native, lightweight |
+| Elysia | Type-safe APIs, Bun-first | Plugin decorator pattern |
+| Express | Legacy apps, large ecosystem | Middleware injection |
+| Fastify | High performance, plugins | Plugin system |
+| Koa | Minimal, middleware-based | Context extension |
+
+## Conclusion
+
+OnePipe's primitives are framework-agnostic by design. You can:
+
+- Add event sourcing to any existing app
+- Use projections alongside your current ORM
+- Drop in caching without refactoring
+- Stream events via SSE from any framework
+
+Start with one primitive, prove the value, then expand. No big bang rewrites required.
+
+Check out the [full documentation](/docs) for detailed API references, or explore the [examples](/docs/examples) for more integration patterns.

@@ -1,0 +1,296 @@
+# CLI
+
+Command-line interface for OnePipe development and deployment.
+
+## Installation
+
+```bash
+bun add -g @onepipe/cli
+
+# Or run directly
+bunx onepipe
+```
+
+## Commands
+
+### dev
+
+Start development server with dashboard:
+
+```bash
+onepipe dev
+
+# Custom entrypoint
+onepipe dev --app ./src/server.ts
+
+# Custom ports
+onepipe dev --app-port 3001 --dashboard-port 4000
+
+# Without dashboard
+onepipe dev --no-dashboard
+```
+
+The dev command:
+- Starts the dashboard at http://localhost:4000
+- Starts your app at http://localhost:3001
+- Auto-starts PostgreSQL (via Docker or Apple Container)
+- Configures tracing to send to dashboard
+
+### deploy
+
+Deploy to production:
+
+```bash
+# Docker (default)
+onepipe deploy production
+
+# Fly.io
+onepipe deploy production --target fly
+
+# Standalone binary
+onepipe deploy production --target standalone
+```
+
+Options:
+```bash
+onepipe deploy <environment> [options]
+
+Options:
+  --target, -t     Target: docker (default), fly, standalone
+  --registry, -r   Docker registry (e.g., ghcr.io/username)
+  --tag            Image tag (default: latest)
+  --push           Push image to registry after build
+  --force          Overwrite existing Dockerfile/fly.toml
+```
+
+### migrate
+
+Manage database migrations:
+
+```bash
+# Run pending migrations
+onepipe migrate up
+
+# Rollback last migration
+onepipe migrate down
+
+# Show migration status
+onepipe migrate status
+```
+
+### logs
+
+Stream logs from an environment:
+
+```bash
+# Development logs
+onepipe logs
+
+# Production logs
+onepipe logs production
+
+# Filter by service
+onepipe logs production --service api
+```
+
+### env
+
+Manage environments:
+
+```bash
+# List environments
+onepipe env list
+
+# Show environment status
+onepipe env status
+```
+
+### flows
+
+Manage event flows:
+
+```bash
+# List all flows
+onepipe flows list
+
+# Read last 10 events from a flow
+onepipe flows read todo-events
+
+# Write an event to a flow
+onepipe flows write todo-events '{"type":"created","id":"123"}'
+```
+
+### db
+
+Database utilities:
+
+```bash
+# Run database seeds
+onepipe db seed
+
+# Reset database
+onepipe db reset
+
+# Open database console
+onepipe db console
+```
+
+## Configuration
+
+Create `onepipe.config.ts` in your project root:
+
+```typescript
+import { defineConfig } from '@onepipe/sdk'
+
+export default defineConfig({
+  name: 'my-app',
+
+  environments: {
+    development: {
+      streams: 'embedded',
+      database: 'sqlite:./dev.db',
+    },
+    staging: {
+      streams: 'https://streams.staging.example.com',
+      database: process.env.STAGING_DATABASE_URL,
+      redis: process.env.STAGING_REDIS_URL,
+    },
+    production: {
+      streams: 'https://streams.example.com',
+      database: process.env.DATABASE_URL,
+      redis: process.env.REDIS_URL,
+      replicas: 3,
+    },
+  },
+
+  deploy: {
+    entrypoint: './src/index.ts',
+    port: 3000,
+  },
+
+  hooks: {
+    preDeploy: async (env) => {
+      console.log(`Deploying to ${env}`)
+    },
+    postDeploy: async (env) => {
+      console.log(`Deployed to ${env}`)
+    },
+  },
+})
+```
+
+## Docker Deployment
+
+The CLI generates optimized Dockerfiles:
+
+```bash
+onepipe deploy production
+```
+
+Generated Dockerfile:
+```dockerfile
+FROM oven/bun:1 AS builder
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile --production
+COPY . .
+RUN bun build ./src/index.ts --outdir ./dist --target bun --minify
+
+FROM oven/bun:1-slim
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+ENV NODE_ENV=production
+EXPOSE 3000
+CMD ["bun", "run", "./dist/index.js"]
+```
+
+Push to registry:
+```bash
+onepipe deploy production \
+  --registry ghcr.io/myorg \
+  --tag v1.0.0 \
+  --push
+```
+
+## Fly.io Deployment
+
+```bash
+onepipe deploy production --target fly
+```
+
+Generated fly.toml:
+```toml
+app = "my-app"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+```
+
+## Standalone Binary
+
+Build a single executable:
+
+```bash
+onepipe deploy production --target standalone
+```
+
+Output: `./dist/my-app` (self-contained binary)
+
+```bash
+# Run directly
+./dist/my-app
+
+# Copy to server
+scp ./dist/my-app user@server:/app/
+ssh user@server "/app/my-app"
+```
+
+## PostgreSQL Auto-Start
+
+The dev command automatically starts PostgreSQL:
+
+1. **Apple Container** (macOS, preferred) - Native, fast
+2. **Docker** (fallback) - Works everywhere
+
+```bash
+onepipe dev --app ./src/index.ts
+# PostgreSQL: 192.168.64.2:5432 (Apple Container)
+# or
+# PostgreSQL: localhost:5432 (Docker)
+```
+
+Container name: `onepipe-postgres`
+
+To use an existing database:
+```bash
+DATABASE_URL=postgres://user:pass@host:5432/db onepipe dev
+```
+
+## Environment Variables
+
+```bash
+# Set by CLI in dev mode
+NODE_ENV=development
+ONEPIPE_PORT=3001
+ONEPIPE_DASHBOARD_URL=http://localhost:4001
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4001/v1/traces
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/onepipe
+```

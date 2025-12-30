@@ -1,6 +1,6 @@
 {
   "name": "@onepipe/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Command-line interface for OnePipe development platform",
   "type": "module",
   "keywords": [
@@ -36,8 +36,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@onepipe/sdk": "^0.3.0",
-    "@onepipe/runtime": "^0.3.0"
+    "@onepipe/sdk": "^0.4.0",
+    "@onepipe/runtime": "^0.4.0",
+    "drizzle-kit": "^0.30.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

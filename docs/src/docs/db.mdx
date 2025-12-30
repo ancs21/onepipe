@@ -1,0 +1,150 @@
+# DB - Database Connections
+
+Connect to PostgreSQL, MySQL, or SQLite. Same API, different backends.
+
+## The Problem
+
+Every database driver has its own API:
+
+```typescript
+// PostgreSQL
+import postgres from 'postgres'
+const sql = postgres('...')
+await sql`SELECT * FROM users`
+
+// SQLite
+import { Database } from 'bun:sqlite'
+const db = new Database('data.db')
+db.query('SELECT * FROM users').all()
+
+// MySQL
+import mysql from 'mysql2/promise'
+const conn = await mysql.createConnection('...')
+await conn.execute('SELECT * FROM users')
+```
+
+Switching databases means rewriting code.
+
+## The Solution
+
+```typescript
+const db = DB.create('main')
+  .postgres(process.env.DATABASE_URL)
+  .build()
+
+// Same API everywhere
+const users = await db.query('SELECT * FROM users')
+```
+
+Switch from SQLite to PostgreSQL? Change one line.
+
+## SQLite
+
+```typescript
+import { DB } from '@onepipe/sdk'
+
+const db = DB.create('main')
+  .sqlite(':memory:')  // or './data.db'
+  .build()
+```
+
+Good for: local dev, embedded apps, tests.
+
+## PostgreSQL
+
+```typescript
+const db = DB.create('main')
+  .postgres('postgres://user:pass@localhost:5432/mydb')
+  .pool({ max: 10, idleTimeout: 30000 })
+  .build()
+```
+
+Good for: production, multiple instances, cloud deployments.
+
+## MySQL
+
+```typescript
+const db = DB.create('main')
+  .mysql('mysql://user:pass@localhost:3306/mydb')
+  .build()
+```
+
+## Queries
+
+```typescript
+// Basic query
+const users = await db.query('SELECT * FROM users')
+
+// Parameterized (safe from SQL injection)
+const [user] = await db.query(
+  'SELECT * FROM users WHERE id = ?',
+  [userId]
+)
+
+// Insert
+await db.query(
+  'INSERT INTO users (id, name) VALUES (?, ?)',
+  [id, name]
+)
+```
+
+## Transactions
+
+Atomic operations that rollback on error:
+
+```typescript
+await db.transaction(async (tx) => {
+  await tx.query('INSERT INTO orders (id) VALUES (?)', [orderId])
+  await tx.query('UPDATE inventory SET stock = stock - 1 WHERE id = ?', [productId])
+  // if either fails, both rollback
+})
+```
+
+## With REST API
+
+```typescript
+const api = REST.create('users')
+  .basePath('/api/users')
+  .db(db)  // inject database
+  .get('/', async (ctx) => {
+    return ctx.db.query('SELECT * FROM users')
+  })
+  .get('/:id', async (ctx) => {
+    const [user] = await ctx.db.query(
+      'SELECT * FROM users WHERE id = ?',
+      [ctx.params.id]
+    )
+    if (!user) return ctx.notFound()
+    return user
+  })
+  .build()
+```
+
+## Schema Introspection
+
+```typescript
+// List tables
+const tables = await db.getTables()
+
+// Get table schema
+const columns = await db.getTableSchema('users')
+```
+
+## Tracing
+
+```typescript
+const db = DB.create('main')
+  .sqlite('./data.db')
+  .trace()  // logs all queries with timing
+  .build()
+```
+
+## Tips
+
+**Use parameterized queries** - Never concatenate user input into SQL.
+
+**Use connection pooling in production** - `.pool({ max: 10 })` for PostgreSQL.
+
+**Start with SQLite for dev** - Switch to PostgreSQL when you deploy.
+
+**Use transactions for related writes** - Keeps your data consistent.

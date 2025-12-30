@@ -1,0 +1,258 @@
+# API Reference
+
+Complete API documentation for the OnePipe SDK, auto-generated from TypeScript source.
+
+## Core Primitives
+
+### REST
+
+The REST builder creates RESTful API endpoints with routing, middleware, and automatic request/response handling.
+
+```typescript
+import { REST } from '@onepipe/sdk'
+
+const api = REST.create('users')
+  .basePath('/api/users')
+  .db(database)
+  .get('/', handler)
+  .post('/', handler)
+  .get('/:id', handler)
+  .put('/:id', handler)
+  .delete('/:id', handler)
+  .build()
+```
+
+### Flow
+
+Durable event streams with append, subscribe, and real-time SSE streaming.
+
+```typescript
+import { Flow } from '@onepipe/sdk'
+
+const events = Flow.create('order-events')
+  .schema(OrderEventSchema)
+  .retention({ maxAge: '30d' })
+  .build()
+
+await events.append({ type: 'created', orderId: '123' })
+```
+
+### DB
+
+Unified database abstraction supporting PostgreSQL, MySQL, and SQLite.
+
+```typescript
+import { DB } from '@onepipe/sdk'
+
+const db = DB.create('main')
+  .postgres('postgres://localhost/mydb')
+  .pool({ max: 10 })
+  .build()
+```
+
+### Projection
+
+Materialized views from Flow events with reduce functions.
+
+```typescript
+import { Projection } from '@onepipe/sdk'
+
+const stats = Projection.create('order-stats')
+  .from(orderEvents)
+  .initial({ count: 0, total: 0 })
+  .reduce((state, event) => ({
+    count: state.count + 1,
+    total: state.total + event.amount
+  }))
+  .build()
+```
+
+### Signal
+
+Reactive state management with schema validation and persistence.
+
+```typescript
+import { Signal } from '@onepipe/sdk'
+
+const config = Signal.create('app-config')
+  .schema(ConfigSchema)
+  .initial({ theme: 'dark', notifications: true })
+  .build()
+```
+
+### Channel
+
+RPC-style handlers with retry, timeouts, and distributed tracing.
+
+```typescript
+import { Channel } from '@onepipe/sdk'
+
+const email = Channel.create('send-email')
+  .handler(async (ctx) => {
+    await sendEmail(ctx.body())
+    return { sent: true }
+  })
+  .retry({ attempts: 3, delay: 1000 })
+  .build()
+```
+
+### Cache
+
+Redis cache abstraction with TTL and automatic serialization.
+
+```typescript
+import { Cache } from '@onepipe/sdk'
+
+const cache = Cache.create('redis')
+  .url('redis://localhost:6379')
+  .build()
+```
+
+### Storage
+
+S3-compatible object storage for files and blobs.
+
+```typescript
+import { Storage } from '@onepipe/sdk'
+
+const storage = Storage.create('files')
+  .s3({
+    bucket: 'my-bucket',
+    region: 'us-east-1'
+  })
+  .build()
+```
+
+### Auth
+
+Authentication wrapper for better-auth integration.
+
+```typescript
+import { Auth } from '@onepipe/sdk'
+
+const auth = Auth.create('main')
+  .db(database)
+  .providers(['email', 'google', 'github'])
+  .build()
+```
+
+### Server
+
+Combines multiple REST APIs into one Bun.serve instance.
+
+```typescript
+import { Server } from '@onepipe/sdk'
+
+Server.create()
+  .port(3000)
+  .use(usersApi)
+  .use(ordersApi)
+  .db(database)
+  .start()
+```
+
+## Type Exports
+
+For detailed type information, see the full TypeScript definitions in the SDK source.
+
+| Type | Description |
+|------|-------------|
+| `RESTContext` | Request context with params, query, body, db |
+| `RESTHandler` | Handler function type |
+| `FlowInstance` | Flow instance with append, read, subscribe |
+| `DBInstance` | Database instance with query methods |
+| `SignalInstance` | Signal instance with get, set, patch |
+| `CacheInstance` | Cache instance with get, set, del |
+| `APIError` | Structured error with typed error codes |
+| `UploadedFile` | Uploaded file with name, type, size, and readers |
+
+## Type Inference Helpers
+
+OnePipe provides tRPC-style type inference helpers for extracting types from your primitives:
+
+```typescript
+import type {
+  InferFlowEvent,
+  InferSignalValue,
+  InferAPIs,
+  InferFlows,
+  InferSignals,
+  InferWorkflowInput,
+  InferWorkflowOutput,
+  InferCronOutput,
+} from '@onepipe/sdk'
+
+// Infer event type from a Flow
+const orderEvents = Flow.create('orders')
+  .schema(z.object({ type: z.string(), orderId: z.string() }))
+  .build()
+
+type OrderEvent = InferFlowEvent<typeof orderEvents>
+// { type: string; orderId: string }
+
+// Infer signal value type
+const config = Signal.create('config')
+  .schema(z.object({ theme: z.enum(['light', 'dark']) }))
+  .build()
+
+type ConfigValue = InferSignalValue<typeof config>
+// { theme: 'light' | 'dark' }
+
+// Infer workflow input/output types
+const processOrder = Workflow.create('process-order')
+  .input(z.object({ orderId: z.string() }))
+  .define(async (ctx) => {
+    return { success: true }
+  })
+  .build()
+
+type OrderInput = InferWorkflowInput<typeof processOrder>
+// { orderId: string }
+
+type OrderOutput = InferWorkflowOutput<typeof processOrder>
+// { success: boolean }
+```
+
+### Extracting Types from App Exports
+
+Use these helpers to extract all types from a central app export:
+
+```typescript
+// app.ts
+export const apis = { users: usersApi, orders: ordersApi }
+export const flows = { orders: orderEvents, notifications: notificationEvents }
+export const signals = { config, featureFlags }
+
+// client.ts
+import type { InferAPIs, InferFlows, InferSignals } from '@onepipe/sdk'
+import type { apis, flows, signals } from './app'
+
+type APIs = InferAPIs<typeof apis>
+type Flows = InferFlows<typeof flows>
+type Signals = InferSignals<typeof signals>
+```
+
+## Runtime Manifest
+
+The SDK includes a manifest system for CLI auto-discovery of infrastructure requirements:
+
+```typescript
+import {
+  registerPrimitive,
+  getManifest,
+  getInfrastructureNeeds,
+} from '@onepipe/sdk'
+
+// Primitives auto-register when built
+const db = DB.create('main').postgres('postgres://...').build()
+const cache = Cache.create('redis').url('redis://...').build()
+
+// CLI can discover what infrastructure is needed
+const manifest = getManifest()
+// Returns all registered primitives with their configs
+
+const needs = getInfrastructureNeeds()
+// Returns: ['postgres', 'redis']
+```
+
+This is primarily used by the CLI for automatic infrastructure provisioning during development and deployment.

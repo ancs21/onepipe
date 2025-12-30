@@ -1,0 +1,152 @@
+# Auth - Authentication
+
+Protect your APIs with better-auth. Session cookies, bearer tokens, user context.
+
+## The Problem
+
+Rolling your own auth is risky:
+
+```typescript
+app.get('/api/me', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+
+  try {
+    const decoded = jwt.verify(token, SECRET)
+    const user = await db.query('SELECT * FROM users WHERE id = ?', [decoded.id])
+    // more boilerplate...
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' })
+  }
+})
+```
+
+Session handling, token validation, user lookup... in every protected route.
+
+## The Solution
+
+```typescript
+const auth = Auth.create('main')
+  .provider(betterAuth)
+  .build()
+
+const api = REST.create('protected')
+  .basePath('/api')
+  .auth(auth)  // all routes protected
+  .get('/me', async (ctx) => {
+    return { user: ctx.user }  // user injected automatically
+  })
+  .build()
+```
+
+## Basic Usage
+
+```typescript
+import { Auth, REST } from '@onepipe/sdk'
+import { betterAuth } from 'better-auth'
+
+// Set up better-auth
+const betterAuthInstance = betterAuth({
+  database: { type: 'sqlite', url: './auth.db' },
+})
+
+// Wrap it with OnePipe Auth
+const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .build()
+
+// Protect your API
+const api = REST.create('protected')
+  .basePath('/api')
+  .auth(auth)
+  .get('/me', async (ctx) => {
+    return { user: ctx.user }
+  })
+  .build()
+```
+
+## Public Routes
+
+Mark specific routes as public:
+
+```typescript
+const api = REST.create('api')
+  .basePath('/api')
+  .auth(auth)
+  .get('/health', { public: true }, async () => {
+    return { status: 'ok' }  // no auth required
+  })
+  .get('/protected', async (ctx) => {
+    return { user: ctx.user }  // auth required
+  })
+  .build()
+```
+
+## Configuration
+
+```typescript
+const auth = Auth.create('main')
+  .provider(betterAuthInstance)
+  .sessionCookie('my_session')     // cookie name
+  .headerName('Authorization')     // header for bearer token
+  .tokenPrefix('Bearer ')          // token prefix
+  .mapUser((user) => ({            // transform user object
+    id: user.id,
+    email: user.email,
+    role: user.role || 'user',
+  }))
+  .build()
+```
+
+## User Context
+
+Access the authenticated user in your handlers:
+
+```typescript
+.get('/profile', async (ctx) => {
+  const { id, email, role } = ctx.user
+
+  return {
+    id,
+    email,
+    role,
+    isAdmin: role === 'admin'
+  }
+})
+
+.put('/settings', async (ctx) => {
+  const { theme } = ctx.body()
+
+  await ctx.db.query(
+    'UPDATE users SET theme = ? WHERE id = ?',
+    [theme, ctx.user.id]
+  )
+
+  return { updated: true }
+})
+```
+
+## Role-Based Access
+
+Check roles in your handlers:
+
+```typescript
+.delete('/users/:id', async (ctx) => {
+  if (ctx.user.role !== 'admin') {
+    return ctx.forbidden('Admin access required')
+  }
+
+  await ctx.db.query('DELETE FROM users WHERE id = ?', [ctx.params.id])
+  return ctx.noContent()
+})
+```
+
+## Tips
+
+**Use better-auth for the heavy lifting** - It handles OAuth, email/password, sessions.
+
+**Map user to what you need** - Don't expose internal fields to your API.
+
+**Use `{ public: true }` sparingly** - Default to protected, explicitly open routes.
+
+**Check roles in handlers** - Fine-grained access control where it matters.

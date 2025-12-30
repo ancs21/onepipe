@@ -21,7 +21,9 @@ import type {
   RetentionOptions,
   ReadOptions,
   StreamOptions,
+  DBInstance,
 } from './types'
+import { registerPrimitive } from './manifest'
 
 // Flow builder state
 interface FlowBuilderState<T> {
@@ -30,6 +32,8 @@ interface FlowBuilderState<T> {
   retention?: RetentionOptions
   trace: boolean
   streamUrl?: string
+  /** Database for PostgreSQL persistence (cloud-native mode) */
+  db?: DBInstance
 }
 
 /**
@@ -93,9 +97,33 @@ class FlowBuilder<T = unknown> {
   }
 
   /**
+   * Configure PostgreSQL persistence for cloud-native deployments.
+   * Events are stored in the database and can be shared across instances.
+   *
+   * @example
+   * ```typescript
+   * const events = Flow.create('events')
+   *   .schema(EventSchema)
+   *   .db(database)  // Enable PostgreSQL persistence
+   *   .build()
+   * ```
+   */
+  db(database: DBInstance): this {
+    this.state.db = database
+    return this
+  }
+
+  /**
    * Build the Flow instance
    */
   build(): FlowInstance<T> {
+    // Register with manifest for CLI auto-discovery
+    registerPrimitive({
+      primitive: 'flow',
+      name: this.state.name,
+      infrastructure: this.state.db ? 'postgresql' : undefined,
+      config: { persistence: this.state.db ? 'postgres' : 'memory' },
+    })
     return new FlowInstanceImpl<T>(this.state)
   }
 }
@@ -109,9 +137,11 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
   private retention?: RetentionOptions
   private traceEnabled: boolean
   private streamUrl: string
+  private db?: DBInstance
   private subscribers: Set<(data: T) => void> = new Set()
   private events: Array<{ id: string; data: T; timestamp: number; offset: string }> = []
   private eventCounter = 0
+  private dbInitialized = false
 
   constructor(state: FlowBuilderState<T>) {
     this.name = state.name
@@ -119,9 +149,68 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
     this.retention = state.retention
     this.traceEnabled = state.trace
     this.streamUrl = state.streamUrl || this.getDefaultStreamUrl()
+    this.db = state.db
+
+    // Initialize PostgreSQL table if configured
+    if (this.db) {
+      this.initializeDatabase()
+    }
 
     // Register with dashboard
     this.registerWithDashboard()
+  }
+
+  /**
+   * Initialize PostgreSQL table for flow events
+   */
+  private async initializeDatabase(): Promise<void> {
+    if (!this.db || this.dbInitialized) return
+
+    try {
+      // Create flow events table if it doesn't exist
+      // Use DO block to handle concurrent creation race condition
+      await this.db.query(`
+        DO $$
+        BEGIN
+          CREATE TABLE IF NOT EXISTS _onepipe_flow_events (
+            id TEXT PRIMARY KEY,
+            flow_name TEXT NOT NULL,
+            data JSONB NOT NULL,
+            timestamp BIGINT NOT NULL,
+            offset_seq BIGINT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        EXCEPTION WHEN duplicate_table OR duplicate_object THEN
+          -- Table already exists, ignore
+          NULL;
+        END $$
+      `)
+
+      // Create index for efficient queries
+      await this.db.query(`
+        CREATE INDEX IF NOT EXISTS idx_flow_events_flow_name
+        ON _onepipe_flow_events (flow_name, offset_seq)
+      `).catch(() => {}) // Ignore index creation errors
+
+      // Get the current max offset for this flow
+      const result = await this.db.query<{ max_offset: number | null }>(
+        `SELECT MAX(offset_seq) as max_offset FROM _onepipe_flow_events WHERE flow_name = $1`,
+        [this.name]
+      )
+      if (result[0]?.max_offset) {
+        this.eventCounter = result[0].max_offset
+      }
+
+      this.dbInitialized = true
+    } catch (error) {
+      // Check if error is due to table already existing (concurrent creation)
+      const errorMsg = String(error)
+      if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
+        this.dbInitialized = true
+        return
+      }
+      console.error(`[Flow:${this.name}] Failed to initialize database:`, error)
+    }
   }
 
   private getDefaultStreamUrl(): string {
@@ -166,13 +255,29 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
 
     const startTime = this.traceEnabled ? performance.now() : 0
     const eventId = crypto.randomUUID()
-    const offset = String(++this.eventCounter).padStart(10, '0')
+    const offsetSeq = ++this.eventCounter
+    const offset = String(offsetSeq).padStart(10, '0')
     const timestamp = Date.now()
 
-    // Store locally
+    // PostgreSQL persistence (cloud-native mode)
+    if (this.db) {
+      try {
+        await this.initializeDatabase() // Ensure table exists
+        await this.db.query(
+          `INSERT INTO _onepipe_flow_events (id, flow_name, data, timestamp, offset_seq)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [eventId, this.name, JSON.stringify(data), timestamp, offsetSeq]
+        )
+      } catch (error) {
+        console.error(`[Flow:${this.name}] Failed to persist event:`, error)
+        // Fall back to memory storage
+      }
+    }
+
+    // Store in memory (cache for local subscribers and fallback)
     this.events.push({ id: eventId, data, timestamp, offset })
 
-    // Keep only last 1000 events
+    // Keep only last 1000 events in memory
     if (this.events.length > 1000) {
       this.events = this.events.slice(-1000)
     }
@@ -224,6 +329,11 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
    * Read messages from the flow
    */
   async read(options: ReadOptions = {}): Promise<T[]> {
+    // PostgreSQL persistence (cloud-native mode)
+    if (this.db) {
+      return this.readFromDatabase(options)
+    }
+
     // Use local storage if no external stream URL
     if (!this.streamUrl) {
       return this.readFromLocalStorage(options)
@@ -256,6 +366,48 @@ class FlowInstanceImpl<T> implements FlowInstance<T> {
         return this.readFromLocalStorage(options)
       }
       throw error
+    }
+  }
+
+  /**
+   * Read from PostgreSQL database (cloud-native mode)
+   */
+  private async readFromDatabase(options: ReadOptions = {}): Promise<T[]> {
+    if (!this.db) return []
+
+    await this.initializeDatabase()
+
+    let sql = `SELECT data FROM _onepipe_flow_events WHERE flow_name = $1`
+    const params: unknown[] = [this.name]
+    let paramIndex = 2
+
+    // Apply offset filter
+    if (options.offset) {
+      const offsetNum = parseInt(options.offset, 10)
+      sql += ` AND offset_seq > $${paramIndex}`
+      params.push(offsetNum)
+      paramIndex++
+    }
+
+    sql += ` ORDER BY offset_seq`
+
+    // Apply tail (last N) - need to reverse order then limit
+    if (options.tail) {
+      sql = `SELECT data FROM (${sql} DESC LIMIT $${paramIndex}) sub ORDER BY offset_seq`
+      params.push(options.tail)
+      paramIndex++
+    } else if (options.limit) {
+      sql += ` LIMIT $${paramIndex}`
+      params.push(options.limit)
+    }
+
+    try {
+      const result = await this.db.query<{ data: T }>(sql, params)
+      return result.map((row) => row.data)
+    } catch (error) {
+      console.error(`[Flow:${this.name}] Failed to read from database:`, error)
+      // Fallback to memory
+      return this.readFromLocalStorage(options)
     }
   }
 

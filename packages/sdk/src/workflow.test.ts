@@ -5,19 +5,20 @@
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 import { z } from 'zod'
 import { Workflow } from './workflow'
+import type { DBInstance } from './types'
 
 // Mock database instance
-function createMockDB() {
+function createMockDB(): DBInstance {
   return {
     name: 'test-db',
     type: 'postgres' as const,
     query: mock(async () => []),
     execute: mock(async () => ({ rowsAffected: 0 })),
-    transaction: mock(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
+    transaction: mock(async (fn) => fn({} as any)),
     close: mock(async () => {}),
     getTables: mock(async () => []),
     getTableSchema: mock(async () => []),
-  }
+  } as DBInstance
 }
 
 describe('Workflow', () => {
@@ -68,11 +69,11 @@ describe('Workflow', () => {
         type: 'sqlite' as const,
         query: mock(async () => []),
         execute: mock(async () => ({ rowsAffected: 0 })),
-        transaction: mock(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
+        transaction: mock(async (fn) => fn({} as any)),
         close: mock(async () => {}),
         getTables: mock(async () => []),
         getTableSchema: mock(async () => []),
-      }
+      } as DBInstance
 
       expect(() => {
         Workflow.create('test').db(sqliteDb)

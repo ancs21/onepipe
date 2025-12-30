@@ -1,0 +1,338 @@
+# Drizzle ORM Integration
+
+Type-safe SQL with [Drizzle ORM](https://orm.drizzle.team). Schema-first, zero runtime overhead.
+
+## Why Drizzle?
+
+- **Type-safe queries** — TypeScript knows your schema
+- **SQL-like syntax** — Looks like SQL, works like SQL
+- **Zero overhead** — Compiles to raw SQL, no runtime magic
+- **Great migrations** — Schema-driven, automatic generation
+
+## Installation
+
+```bash
+bun add drizzle-orm
+bun add -d drizzle-kit
+```
+
+## Setup
+
+### 1. Define your schema
+
+```typescript
+// src/db/schema.ts
+import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core'
+
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const todos = pgTable('todos', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  completed: boolean('completed').default(false).notNull(),
+  userId: text('user_id').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+```
+
+### 2. Create the database client
+
+```typescript
+// src/db/index.ts
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import * as schema from './schema'
+
+const client = postgres(process.env.DATABASE_URL!)
+
+export const db = drizzle(client, { schema })
+export { schema }
+```
+
+### 3. Use with OnePipe REST
+
+```typescript
+// src/api.ts
+import { REST } from '@onepipe/sdk'
+import { db, schema } from './db'
+import { eq } from 'drizzle-orm'
+
+const api = REST.create('todos')
+  .basePath('/api/todos')
+  .get('/', async (ctx) => {
+    return db.select().from(schema.todos)
+  })
+  .get('/:id', async (ctx) => {
+    const [todo] = await db
+      .select()
+      .from(schema.todos)
+      .where(eq(schema.todos.id, ctx.params.id))
+
+    if (!todo) return ctx.notFound()
+    return todo
+  })
+  .post('/', async (ctx) => {
+    const { title, userId } = ctx.body()
+
+    const [todo] = await db
+      .insert(schema.todos)
+      .values({
+        id: crypto.randomUUID(),
+        title,
+        userId,
+      })
+      .returning()
+
+    return ctx.created(todo)
+  })
+  .patch('/:id', async (ctx) => {
+    const { completed } = ctx.body()
+
+    const [todo] = await db
+      .update(schema.todos)
+      .set({ completed })
+      .where(eq(schema.todos.id, ctx.params.id))
+      .returning()
+
+    if (!todo) return ctx.notFound()
+    return todo
+  })
+  .delete('/:id', async (ctx) => {
+    await db
+      .delete(schema.todos)
+      .where(eq(schema.todos.id, ctx.params.id))
+
+    return ctx.noContent()
+  })
+  .build()
+```
+
+## Common Queries
+
+### Select
+
+```typescript
+// All rows
+const users = await db.select().from(schema.users)
+
+// With conditions
+const activeUsers = await db
+  .select()
+  .from(schema.users)
+  .where(eq(schema.users.active, true))
+
+// Specific columns
+const emails = await db
+  .select({ email: schema.users.email })
+  .from(schema.users)
+
+// With limit and offset
+const page = await db
+  .select()
+  .from(schema.users)
+  .limit(10)
+  .offset(20)
+
+// Order by
+const sorted = await db
+  .select()
+  .from(schema.users)
+  .orderBy(schema.users.createdAt)
+```
+
+### Insert
+
+```typescript
+// Single row
+const [user] = await db
+  .insert(schema.users)
+  .values({
+    id: crypto.randomUUID(),
+    email: 'alice@example.com',
+    name: 'Alice',
+  })
+  .returning()
+
+// Multiple rows
+await db.insert(schema.users).values([
+  { id: '1', email: 'alice@example.com', name: 'Alice' },
+  { id: '2', email: 'bob@example.com', name: 'Bob' },
+])
+
+// On conflict (upsert)
+await db
+  .insert(schema.users)
+  .values({ id: '1', email: 'alice@example.com' })
+  .onConflictDoUpdate({
+    target: schema.users.email,
+    set: { name: 'Alice Updated' },
+  })
+```
+
+### Update
+
+```typescript
+const [updated] = await db
+  .update(schema.users)
+  .set({ name: 'Alice Smith' })
+  .where(eq(schema.users.id, userId))
+  .returning()
+```
+
+### Delete
+
+```typescript
+await db
+  .delete(schema.users)
+  .where(eq(schema.users.id, userId))
+```
+
+### Joins
+
+```typescript
+// Inner join
+const todosWithUsers = await db
+  .select({
+    todo: schema.todos,
+    user: schema.users,
+  })
+  .from(schema.todos)
+  .innerJoin(schema.users, eq(schema.todos.userId, schema.users.id))
+
+// Left join
+const usersWithTodos = await db
+  .select()
+  .from(schema.users)
+  .leftJoin(schema.todos, eq(schema.users.id, schema.todos.userId))
+```
+
+### Transactions
+
+```typescript
+await db.transaction(async (tx) => {
+  const [user] = await tx
+    .insert(schema.users)
+    .values({ id: '1', email: 'alice@example.com' })
+    .returning()
+
+  await tx
+    .insert(schema.todos)
+    .values({ id: '1', title: 'Welcome!', userId: user.id })
+})
+```
+
+## Migrations
+
+### Configure drizzle.config.ts
+
+```typescript
+// drizzle.config.ts
+import { defineConfig } from 'drizzle-kit'
+
+export default defineConfig({
+  schema: './src/db/schema.ts',
+  out: './drizzle',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+})
+```
+
+### Generate migrations
+
+```bash
+# Generate migration from schema changes
+bunx drizzle-kit generate
+
+# Push schema directly (dev only)
+bunx drizzle-kit push
+
+# Open Drizzle Studio
+bunx drizzle-kit studio
+```
+
+### Run migrations
+
+```typescript
+import { migrate } from 'drizzle-orm/postgres-js/migrator'
+import { db } from './db'
+
+await migrate(db, { migrationsFolder: './drizzle' })
+```
+
+## With OnePipe DB
+
+You can use Drizzle alongside OnePipe's DB primitive:
+
+```typescript
+import { DB } from '@onepipe/sdk'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import * as schema from './db/schema'
+
+// OnePipe DB for raw queries
+const onepipeDb = DB.create('main')
+  .postgres(process.env.DATABASE_URL)
+  .build()
+
+// Drizzle for type-safe queries
+const client = postgres(process.env.DATABASE_URL!)
+const drizzleDb = drizzle(client, { schema })
+
+const api = REST.create('api')
+  .basePath('/api')
+  .db(onepipeDb)
+  .get('/stats', async (ctx) => {
+    // Use OnePipe DB for complex raw SQL
+    return ctx.db.query(`
+      SELECT COUNT(*) as total,
+             SUM(CASE WHEN completed THEN 1 ELSE 0 END) as done
+      FROM todos
+    `)
+  })
+  .get('/todos', async () => {
+    // Use Drizzle for type-safe queries
+    return drizzleDb.select().from(schema.todos)
+  })
+  .build()
+```
+
+## SQLite Setup
+
+```typescript
+import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { Database } from 'bun:sqlite'
+import * as schema from './schema'
+
+const sqlite = new Database('app.db')
+export const db = drizzle(sqlite, { schema })
+```
+
+Schema for SQLite:
+
+```typescript
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+```
+
+## Tips
+
+**Use `.returning()` for inserts/updates** — Get the created/updated row back.
+
+**Define relations in schema** — Enables `db.query` API for nested selects.
+
+**Use Drizzle Studio for debugging** — `bunx drizzle-kit studio` opens a visual browser.
+
+**Generate migrations, don't push in production** — `push` is for dev, `generate` + `migrate` for prod.

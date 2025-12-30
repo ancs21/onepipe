@@ -1,0 +1,168 @@
+# Server - HTTP Runtime
+
+Start your app with `serve()`. Combines all your APIs, flows, and channels into one Bun server.
+
+## The Problem
+
+Wiring up multiple APIs manually:
+
+```typescript
+const server = Bun.serve({
+  port: 3000,
+  fetch(req) {
+    const url = new URL(req.url)
+    if (url.pathname.startsWith('/api/users')) return usersHandler(req)
+    if (url.pathname.startsWith('/api/todos')) return todosHandler(req)
+    if (url.pathname.startsWith('/auth')) return authHandler(req)
+    return new Response('Not Found', { status: 404 })
+  }
+})
+```
+
+Manual routing, no health checks, no graceful shutdown.
+
+## The Solution
+
+```typescript
+import { serve } from '@onepipe/runtime'
+
+serve({
+  port: 3000,
+  rest: [usersApi, todosApi, authApi],
+})
+```
+
+Routes registered automatically. Health checks included. Graceful shutdown built-in.
+
+## Installation
+
+```bash
+bun add @onepipe/sdk @onepipe/runtime
+```
+
+## Basic Usage
+
+```typescript
+import { REST } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+const todosApi = REST.create('todos')
+  .basePath('/api/todos')
+  .get('/', async () => [])
+  .build()
+
+serve({
+  port: 3000,
+  rest: [todosApi],
+})
+```
+
+## Multiple APIs
+
+```typescript
+const todosApi = REST.create('todos').basePath('/api/todos').build()
+const usersApi = REST.create('users').basePath('/api/users').build()
+const authApi = REST.create('auth').basePath('/auth').build()
+
+serve({
+  port: 3000,
+  rest: [todosApi, usersApi, authApi],
+})
+```
+
+## Full Configuration
+
+```typescript
+import { REST, Flow, Channel } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+const api = REST.create('orders').basePath('/api/orders').build()
+const events = Flow.create('order-events').db(postgres).build()
+const processPayment = Channel.create('process-payment').build()
+
+serve({
+  port: 3000,
+  hostname: '0.0.0.0',
+  rest: [api],
+  flows: [events],
+  channels: [processPayment],
+  projections: [],
+  signals: [],
+})
+```
+
+## Server Output
+
+When you start:
+
+```
+┌─────────────────────────────────────────────────┐
+│                                                 │
+│   ⚡ OnePipe Server                             │
+│                                                 │
+│   http://0.0.0.0:3000                           │
+│                                                 │
+│   REST APIs:      1 registered                  │
+│   Channels:       1 registered                  │
+│   Flows:          1 registered                  │
+│                                                 │
+└─────────────────────────────────────────────────┘
+  GET     /api/orders/
+  POST    /api/orders/
+```
+
+## Built-in Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/health` | Health check `{ status: 'ok' }` |
+| `/_health` | Alias for health check |
+| `/openapi.json` | Aggregate OpenAPI spec |
+| `/rpc/{channel}` | RPC endpoint for channels |
+
+## Graceful Shutdown
+
+The server handles SIGTERM automatically:
+
+```typescript
+const server = serve({
+  port: 3000,
+  rest: [api],
+})
+
+// Manual shutdown if needed
+process.on('SIGINT', () => {
+  server.stop()
+})
+```
+
+## With Lifecycle
+
+For production deployments with health checks:
+
+```typescript
+import { Lifecycle } from '@onepipe/sdk'
+import { serve } from '@onepipe/runtime'
+
+const lifecycle = Lifecycle.create()
+  .healthCheck('db', () => db.query('SELECT 1'))
+  .healthCheck('redis', () => cache.ping())
+  .onShutdown('db', () => db.close(), 10)
+  .build()
+
+serve({
+  port: 3000,
+  rest: [api],
+  lifecycle,
+})
+```
+
+## Tips
+
+**Use `0.0.0.0` for Docker** - `localhost` won't accept external connections.
+
+**Register all primitives** - Flows, channels, projections need to be in `serve()` to work.
+
+**Check `/health` for readiness** - Kubernetes/Cloud Run use this to route traffic.
+
+**Let the runtime handle shutdown** - Don't `process.exit()` manually.

@@ -58,6 +58,7 @@ import type {
   DBContext,
   FlowInstance,
 } from './types'
+import { registerPrimitive } from './manifest'
 
 // ============================================================================
 // PostgreSQL Schema Setup
@@ -231,6 +232,14 @@ class WorkflowBuilder<TInput = unknown, TOutput = unknown> {
     if (!this.state.db) {
       throw new Error(`Workflow "${this.state.name}" requires a PostgreSQL database (use .db())`)
     }
+
+    // Register with manifest for CLI auto-discovery
+    registerPrimitive({
+      primitive: 'workflow',
+      name: this.state.name,
+      infrastructure: 'postgresql',
+    })
+
     return new WorkflowInstanceImpl<TInput, TOutput>(this.state)
   }
 
@@ -267,6 +276,8 @@ class WorkflowContextImpl<TInput> implements WorkflowContext<TInput> {
   private stepIndex = 0
   private traceEnabled: boolean
   private defaultRetry?: RetryOptions
+  /** Heartbeat interval ID for long-running operations */
+  private heartbeatInterval?: ReturnType<typeof setInterval>
 
   constructor(
     workflowId: string,
@@ -285,6 +296,42 @@ class WorkflowContextImpl<TInput> implements WorkflowContext<TInput> {
     this.db = db
     this.traceEnabled = traceEnabled
     this.defaultRetry = defaultRetry
+  }
+
+  /**
+   * Update workflow heartbeat to prevent stall detection
+   */
+  private async updateHeartbeat(): Promise<void> {
+    await this.dbInstance.query(
+      `UPDATE _onepipe_workflows SET updated_at = NOW() WHERE workflow_id = $1`,
+      [this.workflowId]
+    )
+  }
+
+  /**
+   * Start heartbeat interval for long-running operations
+   */
+  private startHeartbeat(): void {
+    // Update every 10 seconds to stay within the 30-second stall threshold
+    this.heartbeatInterval = setInterval(async () => {
+      try {
+        await this.updateHeartbeat()
+      } catch (err) {
+        if (this.traceEnabled) {
+          console.error(`[Workflow:${this.workflowName}] Heartbeat failed:`, err)
+        }
+      }
+    }, 10_000)
+  }
+
+  /**
+   * Stop heartbeat interval
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = undefined
+    }
   }
 
   /**
@@ -431,8 +478,18 @@ class WorkflowContextImpl<TInput> implements WorkflowContext<TInput> {
       [this.workflowId, stepName, this.stepIndex - 1, JSON.stringify({ wakeTime: wakeTime.toISOString() })]
     )
 
-    // Actually sleep
-    await new Promise(resolve => setTimeout(resolve, ms))
+    // Start heartbeat for long sleeps (>10 seconds)
+    if (ms > 10_000) {
+      this.startHeartbeat()
+    }
+
+    try {
+      // Actually sleep
+      await new Promise(resolve => setTimeout(resolve, ms))
+    } finally {
+      // Stop heartbeat
+      this.stopHeartbeat()
+    }
 
     // Mark as completed
     await this.dbInstance.query(
@@ -463,8 +520,15 @@ class WorkflowContextImpl<TInput> implements WorkflowContext<TInput> {
     // Start child workflow
     const handle = await workflow.start(input, { workflowId: childId })
 
-    // Wait for result
-    return handle.result()
+    // Start heartbeat while waiting for child
+    this.startHeartbeat()
+
+    try {
+      // Wait for result
+      return await handle.result()
+    } finally {
+      this.stopHeartbeat()
+    }
   }
 
   /**
@@ -474,33 +538,40 @@ class WorkflowContextImpl<TInput> implements WorkflowContext<TInput> {
     const timeoutMs = timeout ? this.parseDuration(timeout) : undefined
     const startTime = Date.now()
 
-    while (true) {
-      // Check for signal
-      const signals = await this.dbInstance.query<{ data: string }>(
-        `SELECT data FROM _onepipe_workflow_signals
-         WHERE workflow_id = $1 AND signal_name = $2 AND processed_at IS NULL
-         ORDER BY received_at ASC
-         LIMIT 1`,
-        [this.workflowId, name]
-      )
+    // Start heartbeat since signal polling can take a long time
+    this.startHeartbeat()
 
-      if (signals.length > 0) {
-        // Mark as processed
-        await this.dbInstance.query(
-          `UPDATE _onepipe_workflow_signals SET processed_at = NOW()
-           WHERE workflow_id = $1 AND signal_name = $2 AND processed_at IS NULL`,
+    try {
+      while (true) {
+        // Check for signal
+        const signals = await this.dbInstance.query<{ data: string }>(
+          `SELECT data FROM _onepipe_workflow_signals
+           WHERE workflow_id = $1 AND signal_name = $2 AND processed_at IS NULL
+           ORDER BY received_at ASC
+           LIMIT 1`,
           [this.workflowId, name]
         )
-        return JSON.parse(signals[0].data) as T
-      }
 
-      // Check timeout
-      if (timeoutMs && Date.now() - startTime > timeoutMs) {
-        throw new Error(`Signal "${name}" timed out after ${timeout}`)
-      }
+        if (signals.length > 0) {
+          // Mark as processed
+          await this.dbInstance.query(
+            `UPDATE _onepipe_workflow_signals SET processed_at = NOW()
+             WHERE workflow_id = $1 AND signal_name = $2 AND processed_at IS NULL`,
+            [this.workflowId, name]
+          )
+          return JSON.parse(signals[0].data) as T
+        }
 
-      // Poll interval
-      await new Promise(resolve => setTimeout(resolve, 1000))
+        // Check timeout
+        if (timeoutMs && Date.now() - startTime > timeoutMs) {
+          throw new Error(`Signal "${name}" timed out after ${timeout}`)
+        }
+
+        // Poll interval
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    } finally {
+      this.stopHeartbeat()
     }
   }
 

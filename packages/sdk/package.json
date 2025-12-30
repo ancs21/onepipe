@@ -1,6 +1,6 @@
 {
   "name": "@onepipe/sdk",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Stream-first developer platform SDK for Bun",
   "type": "module",
   "main": "./src/index.ts",
@@ -39,7 +39,7 @@
     "./cli": "./src/cli.ts"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --external drizzle-orm --external better-auth",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
@@ -49,13 +49,18 @@
     "@opentelemetry/resources": "^2.2.0",
     "@opentelemetry/sdk-trace-base": "^2.2.0",
     "@opentelemetry/semantic-conventions": "^1.38.0",
+    "drizzle-orm": "^0.38.0",
     "zod": "^3.24.0"
   },
   "peerDependencies": {
-    "better-auth": "^1.0.0"
+    "better-auth": "^1.0.0",
+    "drizzle-orm": "^0.38.0"
   },
   "peerDependenciesMeta": {
     "better-auth": {
+      "optional": true
+    },
+    "drizzle-orm": {
       "optional": true
     }
   },

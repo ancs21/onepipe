@@ -1,0 +1,177 @@
+# HTTP Client
+
+Traced HTTP client for calling external services with automatic OpenTelemetry spans.
+
+## Basic Usage
+
+```typescript
+import { http } from '@onepipe/sdk'
+
+// GET request
+const response = await http.get('https://api.example.com/users')
+const users = await response.json()
+
+// POST request with JSON body
+const response = await http.post('https://api.example.com/users', {
+  name: 'John',
+  email: 'john@example.com'
+})
+
+// PUT request
+await http.put('https://api.example.com/users/123', {
+  name: 'John Updated'
+})
+
+// PATCH request
+await http.patch('https://api.example.com/users/123', {
+  email: 'new@example.com'
+})
+
+// DELETE request
+await http.delete('https://api.example.com/users/123')
+```
+
+## Automatic Tracing
+
+When tracing is enabled, all HTTP calls create child spans automatically:
+
+```typescript
+import { REST, http, initTracing } from '@onepipe/sdk'
+
+initTracing({ serviceName: 'checkout-service' })
+
+const api = REST.create('checkout')
+  .trace()
+  .post('/checkout', async (ctx) => {
+    // This creates a child span under the request span
+    // Span name: "http.client POST payments.api"
+    // Attributes: http.method, http.url, http.host, peer.service
+    const payment = await http.post('https://payments.api/charge', {
+      amount: ctx.body().total
+    })
+
+    if (!payment.ok) {
+      throw APIError.internal('Payment failed')
+    }
+
+    return ctx.json({ success: true })
+  })
+  .build()
+```
+
+## Custom Headers
+
+```typescript
+const response = await http.get('https://api.example.com/data', {
+  headers: {
+    'Authorization': 'Bearer token123',
+    'X-Custom-Header': 'value'
+  }
+})
+```
+
+## Error Handling
+
+```typescript
+try {
+  const response = await http.post('https://api.example.com/data', { data })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw APIError.internal(`API error: ${error.message}`)
+  }
+
+  return await response.json()
+} catch (error) {
+  if (error instanceof TypeError) {
+    // Network error
+    throw APIError.unavailable('External service unavailable')
+  }
+  throw error
+}
+```
+
+## Low-Level Traced Fetch
+
+For more control, use `tracedFetch` directly:
+
+```typescript
+import { tracedFetch } from '@onepipe/sdk'
+
+const response = await tracedFetch('https://api.example.com/data', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/xml',
+    'Authorization': 'Bearer token'
+  },
+  body: '<xml>data</xml>'
+})
+```
+
+## Without Tracing
+
+If tracing is not initialized, the HTTP client falls back to regular fetch:
+
+```typescript
+import { http, isTracingInitialized } from '@onepipe/sdk'
+
+// Check if tracing is enabled
+console.log(isTracingInitialized()) // true or false
+
+// Works the same whether tracing is enabled or not
+const response = await http.get('https://api.example.com/data')
+```
+
+## Span Attributes
+
+When tracing is enabled, each HTTP call creates a span with these attributes:
+
+| Attribute | Example | Description |
+|-----------|---------|-------------|
+| `http.method` | `POST` | HTTP method |
+| `http.url` | `https://api.example.com/data` | Full URL |
+| `http.host` | `api.example.com` | Hostname |
+| `peer.service` | `api.example.com` | Dependent service name |
+
+## Integration with Workflows
+
+Use HTTP client in workflow steps:
+
+```typescript
+const workflow = Workflow
+  .create('fetch-data')
+  .db(postgres)
+  .trace()
+  .define(async (ctx, input) => {
+    // HTTP calls in steps are automatically traced
+    const data = await ctx.step('fetch-external', async () => {
+      const response = await http.get(`https://api.example.com/data/${input.id}`)
+      return response.json()
+    })
+
+    return { data }
+  })
+  .build()
+```
+
+## Retry Pattern
+
+Combine with retry logic for resilient HTTP calls:
+
+```typescript
+import { http } from '@onepipe/sdk'
+
+async function fetchWithRetry(url: string, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await http.get(url)
+      if (response.ok) return response.json()
+      if (response.status >= 500) throw new Error('Server error')
+      return response.json() // 4xx errors don't retry
+    } catch (error) {
+      if (attempt === maxAttempts) throw error
+      await new Promise(r => setTimeout(r, 1000 * attempt))
+    }
+  }
+}
+```

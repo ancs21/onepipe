@@ -1,0 +1,199 @@
+# Flow - Event Streams
+
+An append-only log. You write events, they stay forever. Think Kafka, but without running Kafka.
+
+## What It Does
+
+```
+Your App ──append──▶ Flow ──store──▶ PostgreSQL
+                       │
+                       ├──notify──▶ Subscriber 1
+                       └──notify──▶ Subscriber 2
+```
+
+Events go in, they don't come out (unless you read them). Subscribers get notified when new events arrive.
+
+## Basic Usage
+
+```typescript
+import { Flow } from '@onepipe/sdk'
+import { z } from 'zod'
+
+const events = Flow.create('user-activity')
+  .schema(z.object({
+    type: z.string(),
+    userId: z.string(),
+    timestamp: z.number()
+  }))
+  .db(postgres)  // persist to PostgreSQL
+  .build()
+
+// Write events
+await events.append({ type: 'login', userId: '123', timestamp: Date.now() })
+await events.append({ type: 'purchase', userId: '123', timestamp: Date.now() })
+
+// Read recent events
+const recent = await events.read({ tail: 10 })
+
+// Listen for new events
+events.subscribe((event) => {
+  console.log('Got:', event.type)
+})
+```
+
+## Builder Options
+
+```typescript
+Flow.create('name')
+  .schema(zodSchema)    // validate before storing
+  .db(postgres)         // PostgreSQL persistence
+  .trace()              // OpenTelemetry spans
+  .build()
+```
+
+## Storage Modes
+
+### Memory (default)
+
+```typescript
+const flow = Flow.create('events').build()
+```
+
+Events live in memory. Fast, but gone when you restart.
+
+### PostgreSQL
+
+```typescript
+const flow = Flow.create('events').db(postgres).build()
+```
+
+Events stored in `_onepipe_flow_events` table. All instances see all events. Survives restarts.
+
+## Reading Events
+
+```typescript
+// Last 10 events
+const recent = await flow.read({ tail: 10 })
+
+// After a specific ID (for pagination)
+const next = await flow.read({ after: '100', limit: 50 })
+
+// All events (careful with large flows)
+const all = await flow.read()
+```
+
+## Subscribing
+
+Two ways:
+
+```typescript
+// Callback - get notified immediately
+const unsubscribe = flow.subscribe((event) => {
+  console.log('New:', event)
+})
+
+// Later...
+unsubscribe()
+```
+
+```typescript
+// Async iterator - good for SSE endpoints
+for await (const event of flow.stream({ live: true })) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`)
+}
+```
+
+## Schema Validation
+
+Use discriminated unions for typed events:
+
+```typescript
+const OrderEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('created'), orderId: z.string(), total: z.number() }),
+  z.object({ type: z.literal('paid'), orderId: z.string() }),
+  z.object({ type: z.literal('shipped'), orderId: z.string(), tracking: z.string() }),
+])
+
+const orders = Flow.create('orders').schema(OrderEvent).db(postgres).build()
+
+// TypeScript knows the shape
+orders.subscribe((event) => {
+  if (event.type === 'shipped') {
+    console.log(event.tracking)  // ✓ type-safe
+  }
+})
+```
+
+## With Projections
+
+Flows pair naturally with Projections to compute derived state:
+
+```typescript
+const events = Flow.create('orders').db(postgres).build()
+
+const stats = Projection.create('order-stats')
+  .from(events)
+  .initial({ count: 0, revenue: 0 })
+  .reduce((state, event) => {
+    if (event.type === 'created') {
+      return { count: state.count + 1, revenue: state.revenue + event.total }
+    }
+    return state
+  })
+  .build()
+
+await stats.get()  // { count: 42, revenue: 12500 }
+```
+
+## Multi-Instance Behavior
+
+With `.db(postgres)`:
+- All appends go to the same table
+- All subscribers on all instances get notified
+- Order is preserved by database sequence
+
+Without PostgreSQL (memory mode):
+- Each instance has its own events
+- No sharing between instances
+
+## Example: Activity Feed
+
+```typescript
+const activity = Flow.create('activity')
+  .schema(z.object({
+    action: z.enum(['post', 'like', 'comment', 'follow']),
+    actorId: z.string(),
+    targetId: z.string(),
+    metadata: z.record(z.any()).optional()
+  }))
+  .db(postgres)
+  .build()
+
+// Record activity
+await activity.append({
+  action: 'like',
+  actorId: 'user-1',
+  targetId: 'post-42'
+})
+
+// Get user's feed
+const feed = await activity.read({ tail: 50 })
+
+// Stream to client
+app.get('/feed/live', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  for await (const event of activity.stream({ live: true })) {
+    res.write(`data: ${JSON.stringify(event)}\n\n`)
+  }
+})
+```
+
+## Tips
+
+**Use discriminated unions** - TypeScript will ensure you handle all event types.
+
+**Keep events small** - Store IDs and references, not full documents.
+
+**Use `.db()` in production** - Memory mode loses everything on restart.
+
+**Pair with Projection** - Don't scan all events to compute totals. Build a Projection instead.
