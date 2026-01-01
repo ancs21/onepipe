@@ -75,6 +75,28 @@ Convert to JSON response (safe for client consumption)
 | `code` | [`APIErrorCode`](#apierrorcode-1) |
 | `message` | `string` |
 
+##### fromResponse()
+
+```ts
+static fromResponse(status, body?): APIError;
+```
+
+Create APIError from HTTP response status and body
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `status` | `number` |
+| `body?` | \{ `code?`: `string`; `error?`: `string`; `message?`: `string`; \} |
+| `body.code?` | `string` |
+| `body.error?` | `string` |
+| `body.message?` | `string` |
+
+###### Returns
+
+[`APIError`](#apierror)
+
 ##### internal()
 
 ```ts
@@ -1997,6 +2019,123 @@ subscribe(handler): () => void;
 
 ***
 
+### HealthCheckResult
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="latencyms"></a> `latencyMs` | `number` |
+| <a id="message"></a> `message?` | `string` |
+| <a id="name-14"></a> `name` | `string` |
+| <a id="status-2"></a> `status` | [`HealthStatus`](#healthstatus) |
+
+***
+
+### HealthResponse
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="checks"></a> `checks` | [`HealthCheckResult`](#healthcheckresult)[] |
+| <a id="status-3"></a> `status` | [`HealthStatus`](#healthstatus) |
+| <a id="timestamp-1"></a> `timestamp` | `string` |
+| <a id="uptime"></a> `uptime` | `number` |
+
+***
+
+### LifecycleInstance
+
+#### Methods
+
+##### health()
+
+```ts
+health(): Promise<Response>;
+```
+
+Detailed health check with all component statuses
+
+###### Returns
+
+`Promise`\<`Response`\>
+
+##### isShuttingDown()
+
+```ts
+isShuttingDown(): boolean;
+```
+
+Check if shutdown is in progress
+
+###### Returns
+
+`boolean`
+
+##### liveness()
+
+```ts
+liveness(): Response;
+```
+
+Check if the application is alive (for K8s liveness probe)
+Returns 200 if process is running
+
+###### Returns
+
+`Response`
+
+##### readiness()
+
+```ts
+readiness(): Promise<Response>;
+```
+
+Check if the application is ready to receive traffic (for K8s readiness probe)
+Returns 200 only if all health checks pass
+
+###### Returns
+
+`Promise`\<`Response`\>
+
+##### register()
+
+```ts
+register(): void;
+```
+
+Register the lifecycle with process signals
+
+###### Returns
+
+`void`
+
+##### shutdown()
+
+```ts
+shutdown(): Promise<void>;
+```
+
+Trigger graceful shutdown
+
+###### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### LifecycleOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="flushtracingonshutdown"></a> `flushTracingOnShutdown?` | `boolean` | Whether to flush OTEL traces on shutdown **Default** `true` |
+| <a id="shutdowntimeout"></a> `shutdownTimeout?` | `number` | Grace period for shutdown in milliseconds **Default** `30000 (30 seconds)` |
+
+***
+
 ### ListWorkflowOptions
 
 #### Properties
@@ -2005,7 +2144,7 @@ subscribe(handler): () => void;
 | ------ | ------ |
 | <a id="limit-1"></a> `limit?` | `number` |
 | <a id="offset"></a> `offset?` | `number` |
-| <a id="status-2"></a> `status?` | \| [`WorkflowStatus`](#workflowstatus) \| [`WorkflowStatus`](#workflowstatus)[] |
+| <a id="status-4"></a> `status?` | \| [`WorkflowStatus`](#workflowstatus) \| [`WorkflowStatus`](#workflowstatus)[] |
 
 ***
 
@@ -2017,7 +2156,7 @@ subscribe(handler): () => void;
 | ------ | ------ |
 | <a id="config"></a> `config?` | `Record`\<`string`, `unknown`\> |
 | <a id="infrastructure"></a> `infrastructure?` | [`InfrastructureType`](#infrastructuretype) |
-| <a id="name-14"></a> `name` | `string` |
+| <a id="name-15"></a> `name` | `string` |
 | <a id="primitive"></a> `primitive` | [`PrimitiveType`](#primitivetype) |
 
 ***
@@ -2026,11 +2165,484 @@ subscribe(handler): () => void;
 
 #### Properties
 
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="environments"></a> `environments` | `Record`\<`string`, [`EnvironmentConfig`](#environmentconfig)\> | - |
+| <a id="hooks"></a> `hooks?` | [`DeployHooks`](#deployhooks) | - |
+| <a id="name-16"></a> `name` | `string` | - |
+| <a id="services"></a> `services?` | [`ServiceDefinition`](#servicedefinition)[] | Microservices definitions |
+
+***
+
+### PGCacheInstance
+
+#### Methods
+
+##### cleanup()
+
+```ts
+cleanup(): Promise<number>;
+```
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### close()
+
+```ts
+close(): Promise<void>;
+```
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### context()
+
+```ts
+context(): CacheContext;
+```
+
+###### Returns
+
+[`CacheContext`](#cachecontext)
+
+##### decr()
+
+```ts
+decr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### del()
+
+```ts
+del(key): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### exists()
+
+```ts
+exists(key): Promise<boolean>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### expire()
+
+```ts
+expire(key, seconds): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `seconds` | `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### get()
+
+```ts
+get<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hdel()
+
+```ts
+hdel(key, field): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### hget()
+
+```ts
+hget<T>(key, field): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hgetall()
+
+```ts
+hgetall<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### hset()
+
+```ts
+hset(
+   key, 
+   field, 
+value): Promise<void>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `field` | `string` |
+| `value` | `unknown` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### incr()
+
+```ts
+incr(key, by?): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `by?` | `number` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### lpop()
+
+```ts
+lpop<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### lpush()
+
+```ts
+lpush<T>(key, value): Promise<number>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### lrange()
+
+```ts
+lrange<T>(
+   key, 
+   start, 
+stop): Promise<T[]>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `start` | `number` |
+| `stop` | `number` |
+
+###### Returns
+
+`Promise`\<`T`[]\>
+
+##### rpop()
+
+```ts
+rpop<T>(key): Promise<T | null>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`T` \| `null`\>
+
+##### rpush()
+
+```ts
+rpush<T>(key, value): Promise<number>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### sadd()
+
+```ts
+sadd(key, ...members): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| ...`members` | `string`[] |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### set()
+
+```ts
+set<T>(
+   key, 
+   value, 
+options?): Promise<void>;
+```
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `value` | `T` |
+| `options?` | \{ `ttl?`: `number`; \} |
+| `options.ttl?` | `number` |
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### sismember()
+
+```ts
+sismember(key, member): Promise<boolean>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| `member` | `string` |
+
+###### Returns
+
+`Promise`\<`boolean`\>
+
+##### smembers()
+
+```ts
+smembers(key): Promise<string[]>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`string`[]\>
+
+##### srem()
+
+```ts
+srem(key, ...members): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+| ...`members` | `string`[] |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+##### ttl()
+
+```ts
+ttl(key): Promise<number>;
+```
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `key` | `string` |
+
+###### Returns
+
+`Promise`\<`number`\>
+
+#### Properties
+
+| Property | Modifier | Type |
+| ------ | ------ | ------ |
+| <a id="name-17"></a> `name` | `readonly` | `string` |
+
+***
+
+### PGCacheOptions
+
+#### Properties
+
 | Property | Type |
 | ------ | ------ |
-| <a id="environments"></a> `environments` | `Record`\<`string`, [`EnvironmentConfig`](#environmentconfig)\> |
-| <a id="hooks"></a> `hooks?` | [`DeployHooks`](#deployhooks) |
-| <a id="name-15"></a> `name` | `string` |
+| <a id="cleanupinterval"></a> `cleanupInterval?` | `number` |
+| <a id="db-2"></a> `db?` | [`DBInstance`](#dbinstance) |
+| <a id="defaultttl-1"></a> `defaultTtl?` | `number` |
+| <a id="name-18"></a> `name` | `string` |
+| <a id="prefix-1"></a> `prefix?` | `string` |
 
 ***
 
@@ -2038,10 +2650,12 @@ subscribe(handler): () => void;
 
 #### Properties
 
-| Property | Type |
-| ------ | ------ |
-| <a id="max"></a> `max?` | `number` |
-| <a id="min"></a> `min?` | `number` |
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="connectiontimeout"></a> `connectionTimeout?` | `number` | How long to wait for a connection in ms (default: 30000) |
+| <a id="idletimeout"></a> `idleTimeout?` | `number` | How long to keep idle connections in ms (default: 30000) |
+| <a id="max"></a> `max?` | `number` | Maximum number of connections in the pool (default: 10) |
+| <a id="min"></a> `min?` | `number` | Minimum number of connections in the pool |
 
 ***
 
@@ -2200,7 +2814,7 @@ values(): Promise<TState[]>;
 
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
-| <a id="name-16"></a> `name` | `readonly` | `string` |
+| <a id="name-19"></a> `name` | `readonly` | `string` |
 
 ***
 
@@ -2219,9 +2833,21 @@ values(): Promise<TState[]>;
 | ------ | ------ |
 | <a id="from"></a> `from` | `string` \| [`FlowInstance`](#flowinstance)\<`TEvent`\> |
 | <a id="initial"></a> `initial` | `TState` |
-| <a id="name-17"></a> `name` | `string` |
+| <a id="name-20"></a> `name` | `string` |
 | <a id="reduce"></a> `reduce` | (`state`, `event`) => `TState` |
 | <a id="snapshot"></a> `snapshot?` | [`SnapshotOptions`](#snapshotoptions) |
+
+***
+
+### ReadinessResponse
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="checks-1"></a> `checks` | [`HealthCheckResult`](#healthcheckresult)[] |
+| <a id="ready"></a> `ready` | `boolean` |
+| <a id="timestamp-2"></a> `timestamp` | `string` |
 
 ***
 
@@ -2234,6 +2860,19 @@ values(): Promise<TState[]>;
 | <a id="limit-2"></a> `limit?` | `number` |
 | <a id="offset-1"></a> `offset?` | `string` |
 | <a id="tail"></a> `tail?` | `number` |
+
+***
+
+### RequestOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="body"></a> `body?` | `unknown` | Request body (for POST/PUT/PATCH) |
+| <a id="headers"></a> `headers?` | `Record`\<`string`, `string`\> | Additional headers |
+| <a id="query-6"></a> `query?` | `Record`\<`string`, `string` \| `number` \| `boolean`\> | Query parameters |
+| <a id="timeout-1"></a> `timeout?` | `number` | Override timeout for this request |
 
 ***
 
@@ -2455,10 +3094,10 @@ unauthorized(message?): Response;
 | Property | Type |
 | ------ | ------ |
 | <a id="cache"></a> `cache?` | [`CacheContext`](#cachecontext) |
-| <a id="db-2"></a> `db` | [`DBContext`](#dbcontext) |
-| <a id="headers"></a> `headers` | `Headers` |
+| <a id="db-3"></a> `db` | [`DBContext`](#dbcontext) |
+| <a id="headers-1"></a> `headers` | `Headers` |
 | <a id="params"></a> `params` | `Record`\<`string`, `string`\> |
-| <a id="query-6"></a> `query` | `Record`\<`string`, `string`\> |
+| <a id="query-7"></a> `query` | `Record`\<`string`, `string`\> |
 | <a id="responseheaders"></a> `responseHeaders` | `Headers` |
 | <a id="user-2"></a> `user?` | `TUser` |
 
@@ -2495,7 +3134,7 @@ handler(): (req) => Promise<Response>;
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
 | <a id="basepath-1"></a> `basePath` | `readonly` | `string` |
-| <a id="name-18"></a> `name` | `readonly` | `string` |
+| <a id="name-21"></a> `name` | `readonly` | `string` |
 | <a id="routes"></a> `routes` | `readonly` | [`RouteDefinition`](#routedefinition)[] |
 
 ***
@@ -2507,7 +3146,7 @@ handler(): (req) => Promise<Response>;
 | Property | Type |
 | ------ | ------ |
 | <a id="basepath-2"></a> `basePath` | `string` |
-| <a id="name-19"></a> `name` | `string` |
+| <a id="name-22"></a> `name` | `string` |
 
 ***
 
@@ -2566,7 +3205,7 @@ handler(): (req) => Promise<Response>;
 | <a id="auth"></a> `auth?` | [`AuthInstance`](#authinstance)\<[`AuthUser`](#authuser)\> |
 | <a id="cache-1"></a> `cache?` | [`CacheInstance`](#cacheinstance) |
 | <a id="channels"></a> `channels?` | [`ChannelInstance`](#channelinstance)\<`unknown`, `unknown`\>[] |
-| <a id="db-3"></a> `db?` | [`DBInstance`](#dbinstance) |
+| <a id="db-4"></a> `db?` | [`DBInstance`](#dbinstance) |
 | <a id="flows"></a> `flows?` | [`FlowInstance`](#flowinstance)\<`unknown`\>[] |
 | <a id="hostname"></a> `hostname?` | `string` |
 | <a id="port"></a> `port?` | `number` |
@@ -2608,6 +3247,245 @@ stop(): void;
 | <a id="flows-1"></a> `flows` | `readonly` | `TFlows` |
 | <a id="port-1"></a> `port` | `readonly` | `number` |
 | <a id="signals-1"></a> `signals` | `readonly` | `TSignals` |
+
+***
+
+### ServiceClientInstance
+
+#### Methods
+
+##### delete()
+
+```ts
+delete<T>(path, options?): Promise<T>;
+```
+
+DELETE request with typed response
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `path` | `string` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### get()
+
+```ts
+get<T>(path, options?): Promise<T>;
+```
+
+GET request with typed response
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `path` | `string` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### patch()
+
+```ts
+patch<T>(
+   path, 
+   body?, 
+options?): Promise<T>;
+```
+
+PATCH request with typed body and response
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `path` | `string` |
+| `body?` | `unknown` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### post()
+
+```ts
+post<T>(
+   path, 
+   body?, 
+options?): Promise<T>;
+```
+
+POST request with typed body and response
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `path` | `string` |
+| `body?` | `unknown` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### put()
+
+```ts
+put<T>(
+   path, 
+   body?, 
+options?): Promise<T>;
+```
+
+PUT request with typed body and response
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `path` | `string` |
+| `body?` | `unknown` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+##### request()
+
+```ts
+request<T>(
+   method, 
+   path, 
+options?): Promise<T>;
+```
+
+Raw request with full control
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `method` | `string` |
+| `path` | `string` |
+| `options?` | [`RequestOptions`](#requestoptions) |
+
+###### Returns
+
+`Promise`\<`T`\>
+
+#### Properties
+
+| Property | Modifier | Type | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="baseurl"></a> `baseUrl` | `readonly` | `string` | Base URL |
+| <a id="name-23"></a> `name` | `readonly` | `string` | Service name |
+
+***
+
+### ServiceClientOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="baseurl-1"></a> `baseUrl` | `string` | Base URL for the service |
+| <a id="headers-2"></a> `headers` | `Record`\<`string`, `string`\> | Default headers to include in all requests |
+| <a id="name-24"></a> `name` | `string` | Service name (used for tracing and dependency graph) |
+| <a id="retries"></a> `retries` | `number` | Number of retries for failed requests (default: 0) |
+| <a id="retrydelay"></a> `retryDelay` | `number` | Retry delay in milliseconds (default: 1000) |
+| <a id="timeout-2"></a> `timeout` | `number` | Request timeout in milliseconds (default: 30000) |
+
+***
+
+### ServiceConfig
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="headers-3"></a> `headers?` | `Record`\<`string`, `string`\> |
+| <a id="name-25"></a> `name` | `string` |
+| <a id="retries-1"></a> `retries?` | `number` |
+| <a id="retrydelay-1"></a> `retryDelay?` | `number` |
+| <a id="timeout-3"></a> `timeout?` | `number` |
+| <a id="url-2"></a> `url` | `string` |
+
+***
+
+### ServiceDefinition
+
+Service definition for microservices deployment
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="basepath-3"></a> `basePath?` | `string` | Base path for routing (e.g., "/api/users") |
+| <a id="depends"></a> `depends?` | `string`[] | Other services this service depends on |
+| <a id="entrypoint"></a> `entrypoint` | `string` | Path to entrypoint file |
+| <a id="gateway"></a> `gateway?` | `boolean` | Whether this service is the public gateway |
+| <a id="name-26"></a> `name` | `string` | Service name (used in Docker/K8s) |
+| <a id="port-2"></a> `port?` | `number` | Port the service listens on (default: 3000) |
+| <a id="replicas-1"></a> `replicas?` | `number` | Number of replicas (default: 1) |
+
+***
+
+### ShutdownHook
+
+#### Properties
+
+| Property | Type |
+| ------ | ------ |
+| <a id="handler-5"></a> `handler` | () => `void` \| `Promise`\<`void`\> |
+| <a id="name-27"></a> `name` | `string` |
+| <a id="priority"></a> `priority` | `number` |
 
 ***
 
@@ -2758,7 +3636,7 @@ waitFor(predicate, timeout?): Promise<T>;
 
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
-| <a id="name-20"></a> `name` | `readonly` | `string` |
+| <a id="name-28"></a> `name` | `readonly` | `string` |
 
 ***
 
@@ -2775,7 +3653,7 @@ waitFor(predicate, timeout?): Promise<T>;
 | Property | Type |
 | ------ | ------ |
 | <a id="default"></a> `default` | `T` |
-| <a id="name-21"></a> `name` | `string` |
+| <a id="name-29"></a> `name` | `string` |
 | <a id="schema-1"></a> `schema?` | `ZodType`\<`T`, `ZodTypeDef`, `T`\> |
 
 ***
@@ -2788,7 +3666,7 @@ waitFor(predicate, timeout?): Promise<T>;
 | ------ | ------ |
 | <a id="every"></a> `every?` | `number` |
 | <a id="onstartup"></a> `onStartup?` | `"restore"` \| `"rebuild"` |
-| <a id="storage"></a> `storage?` | `"sqlite"` \| `"memory"` |
+| <a id="storage"></a> `storage?` | `"sqlite"` \| `"memory"` \| `"postgresql"` |
 
 ***
 
@@ -2798,7 +3676,7 @@ waitFor(predicate, timeout?): Promise<T>;
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="timeout-1"></a> `timeout?` | `string` | Timeout for this execution |
+| <a id="timeout-4"></a> `timeout?` | `string` | Timeout for this execution |
 | <a id="workflowid"></a> `workflowId?` | `string` | Custom workflow ID for idempotency |
 
 ***
@@ -2814,7 +3692,7 @@ waitFor(predicate, timeout?): Promise<T>;
 | <a id="error-3"></a> `error?` | `string` |
 | <a id="output-3"></a> `output?` | `unknown` |
 | <a id="startedat"></a> `startedAt?` | `Date` |
-| <a id="status-3"></a> `status` | `"pending"` \| `"running"` \| `"completed"` \| `"failed"` |
+| <a id="status-5"></a> `status` | `"pending"` \| `"running"` \| `"completed"` \| `"failed"` |
 | <a id="stepindex"></a> `stepIndex` | `number` |
 | <a id="stepname"></a> `stepName` | `string` |
 
@@ -2827,7 +3705,7 @@ waitFor(predicate, timeout?): Promise<T>;
 | Property | Type |
 | ------ | ------ |
 | <a id="retry-1"></a> `retry?` | [`RetryOptions`](#retryoptions) |
-| <a id="timeout-2"></a> `timeout?` | `string` |
+| <a id="timeout-5"></a> `timeout?` | `string` |
 
 ***
 
@@ -3066,7 +3944,7 @@ Write data to a file
 | Parameter | Type |
 | ------ | ------ |
 | `key` | `string` |
-| `data` | \| `string` \| `ArrayBuffer` \| `Blob` \| `Uint8Array`\<`ArrayBufferLike`\> \| `ReadableStream`\<`any`\> |
+| `data` | \| `string` \| `Blob` \| `ArrayBuffer` \| `Uint8Array`\<`ArrayBufferLike`\> \| `ReadableStream`\<`any`\> |
 | `options?` | [`StorageWriteOptions`](#storagewriteoptions) |
 
 ###### Returns
@@ -3078,7 +3956,7 @@ Write data to a file
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
 | <a id="bucket"></a> `bucket` | `readonly` | `string` |
-| <a id="name-22"></a> `name` | `readonly` | `string` |
+| <a id="name-30"></a> `name` | `readonly` | `string` |
 
 ***
 
@@ -3091,7 +3969,7 @@ Write data to a file
 | <a id="cursor"></a> `cursor?` | `string` | Continuation token for pagination |
 | <a id="delimiter"></a> `delimiter?` | `string` | Delimiter for directory-like listing |
 | <a id="limit-3"></a> `limit?` | `number` | Maximum number of results |
-| <a id="prefix-1"></a> `prefix?` | `string` | Filter by prefix |
+| <a id="prefix-2"></a> `prefix?` | `string` | Filter by prefix |
 
 ***
 
@@ -3117,7 +3995,7 @@ Write data to a file
 | <a id="accesskeyid"></a> `accessKeyId?` | `string` | Access key ID (defaults to S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID env var) |
 | <a id="bucket-1"></a> `bucket` | `string` | S3 bucket name |
 | <a id="endpoint"></a> `endpoint?` | `string` | S3 endpoint URL (e.g., https://s3.us-east-1.amazonaws.com) |
-| <a id="name-23"></a> `name` | `string` | - |
+| <a id="name-31"></a> `name` | `string` | - |
 | <a id="region"></a> `region?` | `string` | AWS region |
 | <a id="secretaccesskey"></a> `secretAccessKey?` | `string` | Secret access key (defaults to S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY env var) |
 | <a id="sessiontoken"></a> `sessionToken?` | `string` | Session token for temporary credentials |
@@ -3203,8 +4081,8 @@ handler(): (req) => Promise<Response>;
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
 | <a id="_routes"></a> `_routes?` | `readonly` | `TRoutes` |
-| <a id="basepath-3"></a> `basePath` | `readonly` | `string` |
-| <a id="name-24"></a> `name` | `readonly` | `string` |
+| <a id="basepath-4"></a> `basePath` | `readonly` | `string` |
+| <a id="name-32"></a> `name` | `readonly` | `string` |
 | <a id="routes-1"></a> `routes` | `readonly` | [`RouteDefinition`](#routedefinition)[] |
 
 ***
@@ -3289,7 +4167,7 @@ File contents as text
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="name-25"></a> `name` | `string` | Original filename from the client |
+| <a id="name-33"></a> `name` | `string` | Original filename from the client |
 | <a id="size-1"></a> `size` | `number` | File size in bytes |
 | <a id="type-5"></a> `type` | `string` | MIME type (e.g., 'image/png', 'application/pdf') |
 
@@ -3462,7 +4340,7 @@ If the step was already completed, returns cached result
 
 | Property | Modifier | Type | Description |
 | ------ | ------ | ------ | ------ |
-| <a id="db-4"></a> `db` | `readonly` | [`DBContext`](#dbcontext) | Database access (read-only in workflow, use step for writes) |
+| <a id="db-5"></a> `db` | `readonly` | [`DBContext`](#dbcontext) | Database access (read-only in workflow, use step for writes) |
 | <a id="input-2"></a> `input` | `readonly` | `TInput` | Input data |
 | <a id="startedat-1"></a> `startedAt` | `readonly` | `Date` | When the workflow started |
 | <a id="workflowid-1"></a> `workflowId` | `readonly` | `string` | Workflow execution ID |
@@ -3487,7 +4365,7 @@ If the step was already completed, returns cached result
 | <a id="input-3"></a> `input` | `unknown` |
 | <a id="output-4"></a> `output?` | `TOutput` |
 | <a id="startedat-2"></a> `startedAt` | `Date` |
-| <a id="status-4"></a> `status` | [`WorkflowStatus`](#workflowstatus) |
+| <a id="status-6"></a> `status` | [`WorkflowStatus`](#workflowstatus) |
 | <a id="steps"></a> `steps` | [`StepExecution`](#stepexecution)[] |
 | <a id="workflowid-2"></a> `workflowId` | `string` |
 | <a id="workflowname-1"></a> `workflowName` | `string` |
@@ -3696,7 +4574,7 @@ Start a new workflow execution
 
 | Property | Modifier | Type |
 | ------ | ------ | ------ |
-| <a id="name-26"></a> `name` | `readonly` | `string` |
+| <a id="name-34"></a> `name` | `readonly` | `string` |
 
 ***
 
@@ -3714,10 +4592,10 @@ Start a new workflow execution
 | Property | Type |
 | ------ | ------ |
 | <a id="input-4"></a> `input?` | `ZodType`\<`TInput`, `ZodTypeDef`, `TInput`\> |
-| <a id="name-27"></a> `name` | `string` |
+| <a id="name-35"></a> `name` | `string` |
 | <a id="output-5"></a> `output?` | `ZodType`\<`TOutput`, `ZodTypeDef`, `TOutput`\> |
 | <a id="retry-2"></a> `retry?` | [`RetryOptions`](#retryoptions) |
-| <a id="timeout-3"></a> `timeout?` | `string` |
+| <a id="timeout-6"></a> `timeout?` | `string` |
 | <a id="trace-6"></a> `trace?` | `boolean` |
 
 ## Type Aliases
@@ -3828,6 +4706,26 @@ This is a placeholder that gets refined by the actual drizzle-orm types
 | Type Parameter | Default type |
 | ------ | ------ |
 | `TSchema` *extends* `Record`\<`string`, `unknown`\> | `Record`\<`string`, `unknown`\> |
+
+***
+
+### HealthCheckFn()
+
+```ts
+type HealthCheckFn = () => Promise<void> | void;
+```
+
+#### Returns
+
+`Promise`\<`void`\> \| `void`
+
+***
+
+### HealthStatus
+
+```ts
+type HealthStatus = "healthy" | "degraded" | "unhealthy";
+```
 
 ***
 
@@ -3980,7 +4878,8 @@ type PrimitiveType =
   | "rest"
   | "auth"
   | "storage"
-  | "channel";
+  | "channel"
+  | "projection";
 ```
 
 Runtime Manifest System
@@ -4011,6 +4910,27 @@ type RESTHandler<TUser> = (ctx) => Promise<Response | unknown>;
 #### Returns
 
 `Promise`\<`Response` \| `unknown`\>
+
+***
+
+### ServiceRegistryInstance
+
+```ts
+type ServiceRegistryInstance<T> = T & object;
+```
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `serviceNames` | `string`[] | Get all registered service names |
+| `healthCheck()` | () => `Promise`\<`Record`\<`string`, \{ `error?`: `string`; `healthy`: `boolean`; `latency?`: `number`; \}\>\> | Check health of all services |
+
+#### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `T` *extends* `Record`\<`string`, [`ServiceClientInstance`](#serviceclientinstance)\> |
 
 ***
 
@@ -4183,6 +5103,40 @@ Called by CLI to determine infrastructure needs.
 #### Returns
 
 [`ManifestEntry`](#manifestentry)[]
+
+***
+
+### getServiceUrl()
+
+```ts
+function getServiceUrl(name, fallback): string;
+```
+
+Get service URL from environment variable
+Converts service name to uppercase with _URL suffix
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `fallback` | `string` |
+
+#### Returns
+
+`string`
+
+#### Example
+
+```typescript
+// If USERS_SERVICE_URL=http://users:3000 is set
+const url = getServiceUrl('users', 'http://localhost:3001')
+// Returns: http://users:3000
+
+// If not set, returns fallback
+const url = getServiceUrl('payments', 'http://localhost:3003')
+// Returns: http://localhost:3003
+```
 
 ***
 
@@ -4521,11 +5475,25 @@ All methods are automatically traced when OTEL is initialized.
 
 | Name | Type | Description |
 | ------ | ------ | ------ |
-| <a id="delete-6"></a> `delete()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a DELETE request |
-| <a id="get-11"></a> `get()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a GET request |
-| <a id="patch-2"></a> `patch()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PATCH request with JSON body |
-| <a id="post"></a> `post()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a POST request with JSON body |
-| <a id="put"></a> `put()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PUT request with JSON body |
+| <a id="delete-8"></a> `delete()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a DELETE request |
+| <a id="get-15"></a> `get()` | (`url`, `options?`) => `Promise`\<`Response`\> | Make a GET request |
+| <a id="patch-4"></a> `patch()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PATCH request with JSON body |
+| <a id="post-2"></a> `post()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a POST request with JSON body |
+| <a id="put-2"></a> `put()` | (`url`, `body?`, `options?`) => `Promise`\<`Response`\> | Make a PUT request with JSON body |
+
+***
+
+### Lifecycle
+
+```ts
+const Lifecycle: object;
+```
+
+#### Type Declaration
+
+| Name | Type | Description |
+| ------ | ------ | ------ |
+| `create()` | () => `LifecycleBuilder` | Create a new lifecycle builder |
 
 ***
 
@@ -4594,6 +5562,22 @@ Migration entry point
 
 ***
 
+### PGCache
+
+```ts
+const PGCache: object;
+```
+
+PGCache factory
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `create()` | (`name`) => `PGCacheBuilder` |
+
+***
+
 ### Projection
 
 ```ts
@@ -4622,7 +5606,7 @@ Create a new REST API
 
 | Name | Type | Default value |
 | ------ | ------ | ------ |
-| <a id="create-18"></a> `create()` | (`name`) => `RESTBuilder` | `RESTBuilder.create` |
+| <a id="create-22"></a> `create()` | (`name`) => `RESTBuilder` | `RESTBuilder.create` |
 
 ***
 
@@ -4638,7 +5622,62 @@ Create a new server
 
 | Name | Type | Default value |
 | ------ | ------ | ------ |
-| <a id="create-19"></a> `create()` | () => `ServerBuilder` | `ServerBuilder.create` |
+| <a id="create-23"></a> `create()` | () => `ServerBuilder` | `ServerBuilder.create` |
+
+***
+
+### ServiceClient
+
+```ts
+const ServiceClient: object;
+```
+
+Create a new service client for calling dependent services.
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `create()` | (`name`) => `ServiceClientBuilder` |
+
+#### Example
+
+```typescript
+const users = ServiceClient.create('users')
+  .baseUrl('http://localhost:3001')
+  .timeout(5000)
+  .retry(3)
+  .build()
+
+const user = await users.get<User>('/api/users/123')
+```
+
+***
+
+### ServiceRegistry
+
+```ts
+const ServiceRegistry: object;
+```
+
+Create a new service registry for managing service clients.
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `create()` | () => `ServiceRegistryBuilder` |
+
+#### Example
+
+```typescript
+export const services = ServiceRegistry.create()
+  .service('users', getServiceUrl('users', 'http://localhost:3001'))
+  .service('orders', getServiceUrl('orders', 'http://localhost:3002'))
+  .timeout(5000)
+  .retry(3)
+  .build()
+```
 
 ***
 
@@ -4670,7 +5709,7 @@ Create a new Storage instance
 
 | Name | Type | Default value |
 | ------ | ------ | ------ |
-| <a id="create-22"></a> `create()` | (`name`) => `StorageBuilder` | `StorageBuilder.create` |
+| <a id="create-30"></a> `create()` | (`name`) => `StorageBuilder` | `StorageBuilder.create` |
 
 ***
 
@@ -4705,4 +5744,4 @@ Create a new Workflow
 
 | Name | Type | Default value |
 | ------ | ------ | ------ |
-| <a id="create-25"></a> `create()` | (`name`) => `WorkflowBuilder`\<`unknown`, `unknown`\> | `WorkflowBuilder.create` |
+| <a id="create-33"></a> `create()` | (`name`) => `WorkflowBuilder`\<`unknown`, `unknown`\> | `WorkflowBuilder.create` |
